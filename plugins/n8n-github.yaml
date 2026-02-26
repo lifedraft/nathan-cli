@@ -1,0 +1,2 @@
+type: n8n-compat
+module: n8n-nodes-base/dist/nodes/Github/Github.node.js

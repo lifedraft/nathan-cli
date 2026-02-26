@@ -1,0 +1,80 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "import", "promise", "node", "oxc"],
+  "env": {
+    "es2024": true,
+    "node": true
+  },
+  "globals": {
+    "Bun": "readonly"
+  },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "pedantic": "off",
+    "style": "off",
+    "perf": "warn",
+    "restriction": "off",
+    "nursery": "off"
+  },
+  "rules": {
+    // ─── Bug Prevention (errors) ───────────────────────────────────
+    "no-unused-vars": "error",
+    "no-undef": "off", // TypeScript handles this
+    "eqeqeq": "error",
+    "no-constant-binary-expression": "error",
+    "no-constructor-return": "error",
+    "no-self-compare": "error",
+    "no-template-curly-in-string": "warn",
+    "use-isnan": "error",
+    "valid-typeof": "error",
+    "no-case-declarations": "error",
+    "no-new-wrappers": "error",
+
+    // ─── TypeScript-Specific (errors) ──────────────────────────────
+    "typescript/no-explicit-any": "warn",
+    "typescript/no-non-null-assertion": "warn",
+    "typescript/no-duplicate-enum-values": "error",
+    "typescript/no-extra-non-null-assertion": "error",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/no-unnecessary-type-constraint": "warn",
+    "typescript/no-wrapper-object-types": "error",
+    "typescript/consistent-type-imports": ["error", { "prefer": "type-imports" }],
+    "typescript/no-require-imports": "error",
+    "typescript/no-this-alias": "error",
+    "typescript/prefer-optional-chain": "warn",
+    "typescript/prefer-nullish-coalescing": "warn",
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/array-type": ["warn", { "default": "array-simple" }],
+    "typescript/consistent-type-definitions": ["warn", "interface"],
+    "typescript/prefer-ts-expect-error": "error",
+
+    // ─── Import Hygiene ────────────────────────────────────────────
+    "import/no-duplicates": "error",
+    "import/no-self-import": "error",
+    "import/no-cycle": "warn",
+    "import/no-named-default": "warn",
+
+    // ─── Promise Safety ────────────────────────────────────────────
+    "promise/no-new-stale-promise": "error",
+
+    // ─── Unicorn (practical subset) ────────────────────────────────
+    "unicorn/no-instanceof-array": "error",
+    "unicorn/no-typeof-undefined": "warn",
+    "unicorn/no-useless-spread": "warn",
+    "unicorn/no-useless-promise-resolve-reject": "warn",
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/prefer-number-properties": "warn",
+    "unicorn/prefer-string-starts-ends-with": "warn",
+    "unicorn/prefer-type-error": "warn",
+    "unicorn/throw-new-error": "error",
+    "unicorn/no-unnecessary-await": "warn",
+    "unicorn/prefer-string-trim-start-end": "warn",
+    "unicorn/require-number-to-fixed-digits-argument": "error",
+
+    // ─── Relaxations for CLI projects ──────────────────────────────
+    "no-console": "off",
+    "unicorn/no-process-exit": "off"
+  },
+  "ignorePatterns": ["dist/**", "node_modules/**", "*.js", "*.mjs", "*.cjs"]
+}

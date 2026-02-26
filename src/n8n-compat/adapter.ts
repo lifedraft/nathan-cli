@@ -1,0 +1,527 @@
+/**
+ * Generic adapter that converts any n8n INodeTypeDescription into a nathan
+ * PluginDescriptor.
+ *
+ * This is the bridge between the n8n node ecosystem and nathan's own plugin
+ * model.  It inspects the node's properties array, identifies the
+ * resource/operation structure (or treats the node as single-purpose when
+ * those properties are absent), collects scoped parameters, maps credential
+ * definitions, and returns a fully-formed PluginDescriptor.
+ */
+
+import type {
+  INodeTypeDescription,
+  INodeProperties,
+  INodePropertyOptions,
+  INodePropertyCollectionEntry,
+  NodePropertyType,
+  HttpMethod,
+} from "./types.ts";
+
+import type {
+  PluginDescriptor,
+  Resource,
+  Operation,
+  Parameter,
+  OutputSpec,
+  CredentialSpec,
+  ParameterType,
+} from "../core/plugin-interface.ts";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalise an n8n property type to the simpler nathan ParameterType.
+ */
+function mapParameterType(n8nType: NodePropertyType): ParameterType {
+  switch (n8nType) {
+    case "number":
+      return "number";
+    case "boolean":
+      return "boolean";
+    case "json":
+    case "collection":
+    case "fixedCollection":
+    case "resourceMapper":
+      return "object";
+    case "multiOptions":
+      return "array";
+    case "string":
+    case "options":
+    case "color":
+    case "dateTime":
+    case "resourceLocator":
+    case "notice":
+    case "hidden":
+    default:
+      return "string";
+  }
+}
+
+/**
+ * Map n8n credential auth type names to nathan CredentialSpec types.
+ */
+function inferCredentialType(credName: string): CredentialSpec["type"] {
+  const lower = credName.toLowerCase();
+  if (lower.includes("oauth2")) return "oauth2";
+  if (lower.includes("oauth")) return "oauth2";
+  if (lower.includes("bearer") || lower.includes("token")) return "bearer";
+  if (lower.includes("basic") || lower.includes("digest")) return "basic";
+  if (lower.includes("api") || lower.includes("key")) return "api_key";
+  return "custom";
+}
+
+/**
+ * Build a human-readable display name from a camelCase or kebab-case string.
+ */
+function humanise(name: string): string {
+  return name
+    .replace(/[-_]/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
+/**
+ * Return the version number (scalar) for the node description.
+ */
+function resolveVersion(desc: INodeTypeDescription): string {
+  if (desc.defaultVersion !== undefined) return String(desc.defaultVersion);
+  if (Array.isArray(desc.version)) return String(desc.version[desc.version.length - 1]);
+  return String(desc.version);
+}
+
+/**
+ * Check whether a property's displayOptions.show/hide conditions match a
+ * given resource+operation pair.
+ */
+function matchesDisplayOptions(
+  prop: INodeProperties,
+  resource: string | undefined,
+  operation: string | undefined,
+): boolean {
+  const opts = prop.displayOptions;
+  if (!opts) return true; // no filter means always visible
+
+  // --- show ---
+  if (opts.show) {
+    for (const [key, allowedValues] of Object.entries(opts.show)) {
+      if (key === "resource" && resource !== undefined) {
+        if (!allowedValues.includes(resource)) return false;
+      } else if (key === "operation" && operation !== undefined) {
+        if (!allowedValues.includes(operation)) return false;
+      }
+      // Other show keys (e.g. based on another param value) can't be
+      // statically resolved here — we optimistically include the param.
+    }
+  }
+
+  // --- hide ---
+  if (opts.hide) {
+    for (const [key, hiddenValues] of Object.entries(opts.hide)) {
+      if (key === "resource" && resource !== undefined) {
+        if (hiddenValues.includes(resource)) return false;
+      } else if (key === "operation" && operation !== undefined) {
+        if (hiddenValues.includes(operation)) return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Determine whether a property is the resource or operation selector itself.
+ */
+function isMetaProperty(prop: INodeProperties): boolean {
+  return prop.name === "resource" || prop.name === "operation";
+}
+
+/**
+ * Type-guard: is the option entry an INodePropertyOptions?
+ */
+function isPropertyOption(
+  opt: INodePropertyOptions | INodeProperties | INodePropertyCollectionEntry,
+): opt is INodePropertyOptions {
+  return "value" in opt && !("type" in opt);
+}
+
+/**
+ * Extract option items from a property's options array.
+ */
+function extractOptions(
+  prop: INodeProperties,
+): Array<{ name: string; value: string | number | boolean }> | undefined {
+  if (!prop.options || prop.options.length === 0) return undefined;
+  if (prop.type !== "options" && prop.type !== "multiOptions") return undefined;
+
+  const mapped: Array<{ name: string; value: string | number | boolean }> = [];
+  for (const opt of prop.options) {
+    if (isPropertyOption(opt)) {
+      mapped.push({ name: opt.name, value: opt.value });
+    }
+  }
+  return mapped.length > 0 ? mapped : undefined;
+}
+
+/**
+ * Infer the HTTP method for a resource+operation pair by inspecting the
+ * request routing metadata on the operation option value.
+ */
+function inferHttpMethod(
+  operationProp: INodeProperties | undefined,
+  operationValue: string,
+  desc: INodeTypeDescription,
+): HttpMethod {
+  // Check the operation option's routing.request.method
+  if (operationProp?.options) {
+    for (const opt of operationProp.options) {
+      if (isPropertyOption(opt) && opt.value === operationValue && opt.routing?.request?.method) {
+        return opt.routing.request.method;
+      }
+    }
+  }
+
+  // Fallback: infer from the operation name
+  const lower = operationValue.toLowerCase();
+  if (lower.startsWith("get") || lower === "list" || lower === "read" || lower === "search") return "GET";
+  if (lower.startsWith("create") || lower === "add" || lower === "insert" || lower === "send") return "POST";
+  if (lower.startsWith("update") || lower === "edit" || lower === "modify" || lower === "upsert") return "PUT";
+  if (lower.startsWith("patch")) return "PATCH";
+  if (lower.startsWith("delete") || lower === "remove" || lower === "destroy") return "DELETE";
+
+  // Last resort: use requestDefaults
+  return desc.requestDefaults?.method ?? "GET";
+}
+
+/**
+ * Infer the URL path for a resource+operation pair by inspecting routing
+ * metadata on the operation option.
+ */
+function inferPath(
+  operationProp: INodeProperties | undefined,
+  operationValue: string,
+  desc: INodeTypeDescription,
+): string {
+  if (operationProp?.options) {
+    for (const opt of operationProp.options) {
+      if (isPropertyOption(opt) && opt.value === operationValue && opt.routing?.request?.url) {
+        return opt.routing.request.url;
+      }
+    }
+  }
+  return desc.requestDefaults?.url ?? "/";
+}
+
+/**
+ * Convert an n8n property to a nathan Parameter.
+ */
+function toNathanParameter(prop: INodeProperties): Parameter {
+  return {
+    name: prop.name,
+    displayName: prop.displayName,
+    description: prop.description ?? "",
+    type: mapParameterType(prop.type),
+    required: prop.required ?? false,
+    default: prop.default,
+    location: prop.routing?.send?.type === "query" ? "query" : "body",
+    options: extractOptions(prop),
+  };
+}
+
+/**
+ * Collect all parameters that are relevant for a given resource + operation
+ * combination, excluding the resource/operation selector properties
+ * themselves.
+ */
+function collectScopedParameters(
+  allProperties: INodeProperties[],
+  resource: string | undefined,
+  operation: string | undefined,
+): Parameter[] {
+  const params: Parameter[] = [];
+
+  for (const prop of allProperties) {
+    if (isMetaProperty(prop)) continue;
+    if (!matchesDisplayOptions(prop, resource, operation)) continue;
+
+    // For collection and fixedCollection, flatten their child values into
+    // the parameter list so the CLI can present them individually.
+    if (
+      (prop.type === "collection" || prop.type === "fixedCollection") &&
+      prop.options &&
+      prop.options.length > 0
+    ) {
+      // Still include the parent as an object-type parameter so callers
+      // know the grouping exists.
+      params.push(toNathanParameter(prop));
+
+      // Additionally, walk children.
+      for (const child of prop.options) {
+        if ("values" in child && Array.isArray((child as INodePropertyCollectionEntry).values)) {
+          for (const sub of (child as INodePropertyCollectionEntry).values) {
+            if (!isMetaProperty(sub)) {
+              params.push(toNathanParameter(sub));
+            }
+          }
+        } else if ("type" in child) {
+          // child is INodeProperties (nested inside a collection)
+          params.push(toNathanParameter(child as INodeProperties));
+        }
+      }
+    } else {
+      params.push(toNathanParameter(prop));
+    }
+  }
+
+  return params;
+}
+
+/**
+ * Build an action label for an operation, falling back to sensible defaults.
+ */
+function buildActionLabel(
+  operationProp: INodeProperties | undefined,
+  operationValue: string,
+  resourceValue: string | undefined,
+): string {
+  // Try to use the action label from the option
+  if (operationProp?.options) {
+    for (const opt of operationProp.options) {
+      if (isPropertyOption(opt) && opt.value === operationValue && opt.action) {
+        return opt.action;
+      }
+    }
+  }
+
+  const opDisplay = humanise(operationValue);
+  if (resourceValue) {
+    return `${opDisplay} ${humanise(resourceValue)}`;
+  }
+  return opDisplay;
+}
+
+/**
+ * Determine a description for the operation, preferring the option's
+ * description field.
+ */
+function buildOperationDescription(
+  operationProp: INodeProperties | undefined,
+  operationValue: string,
+): string {
+  if (operationProp?.options) {
+    for (const opt of operationProp.options) {
+      if (isPropertyOption(opt) && opt.value === operationValue && opt.description) {
+        return opt.description;
+      }
+    }
+  }
+  return humanise(operationValue);
+}
+
+/**
+ * Detect whether an HTTP method is considered idempotent.
+ */
+function isIdempotent(method: HttpMethod): boolean {
+  return method === "GET" || method === "PUT" || method === "DELETE" || method === "HEAD" || method === "OPTIONS";
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert an n8n INodeTypeDescription into a nathan PluginDescriptor.
+ *
+ * The conversion handles two shapes of n8n nodes:
+ *
+ * 1. **Resource + operation nodes** — the most common pattern.  The
+ *    description contains a property named `resource` (type `options`)
+ *    and a property named `operation` (type `options`).  Every
+ *    resource+operation combination becomes a nathan Resource+Operation.
+ *
+ * 2. **Single-purpose nodes** — no resource/operation properties.  All
+ *    non-meta properties are collected into a single resource with a
+ *    single "execute" operation.
+ */
+export function adaptNodeTypeDescription(
+  desc: INodeTypeDescription,
+): PluginDescriptor {
+  const resourceProp = desc.properties.find(
+    (p) => p.name === "resource" && p.type === "options",
+  );
+  const operationProp = desc.properties.find(
+    (p) => p.name === "operation" && p.type === "options",
+  );
+
+  const resources: Resource[] = [];
+
+  // Collect ALL operation properties (there can be multiple, each scoped
+  // to different resources via displayOptions.show.resource).
+  const allOperationProps = desc.properties.filter(
+    (p) => p.name === "operation" && p.type === "options",
+  );
+
+  if (resourceProp && resourceProp.options && resourceProp.options.length > 0) {
+    // ---- Resource + operation pattern ----
+    for (const resOpt of resourceProp.options) {
+      if (!isPropertyOption(resOpt)) continue;
+
+      const resourceValue = String(resOpt.value);
+      const resourceDisplayName = resOpt.name;
+
+      // Find the operation property(ies) that apply to this resource.
+      // n8n nodes often have one operation prop per resource, each with
+      // displayOptions.show.resource scoped to that resource.
+      const matchingOpProps = allOperationProps.filter((opProp) => {
+        if (!opProp.displayOptions?.show?.resource) return true;
+        return opProp.displayOptions.show.resource.includes(resourceValue);
+      });
+
+      const operations: Operation[] = [];
+
+      for (const opProp of matchingOpProps) {
+        if (!opProp.options) continue;
+
+        for (const opOpt of opProp.options) {
+          if (!isPropertyOption(opOpt)) continue;
+
+          const operationValue = String(opOpt.value);
+          const method = inferHttpMethod(opProp, operationValue, desc);
+          const path = inferPath(opProp, operationValue, desc);
+          const params = collectScopedParameters(desc.properties, resourceValue, operationValue);
+
+          operations.push({
+            name: operationValue,
+            displayName: humanise(operationValue),
+            description: buildOperationDescription(opProp, operationValue),
+            method,
+            path,
+            parameters: params,
+            output: {
+              format: "json",
+              description: `Result of ${humanise(operationValue)} on ${resourceDisplayName}`,
+            },
+            requiresAuth: (desc.credentials?.length ?? 0) > 0,
+          });
+        }
+      }
+
+      if (matchingOpProps.length === 0) {
+        // Resource exists but no operation property — single "execute".
+        const params = collectScopedParameters(desc.properties, resourceValue, undefined);
+        operations.push({
+          name: "execute",
+          displayName: "Execute",
+          description: `Execute action on ${resourceDisplayName}`,
+          method: desc.requestDefaults?.method ?? "POST",
+          path: desc.requestDefaults?.url ?? "/",
+          parameters: params,
+          output: {
+            format: "json",
+            description: `Result of executing ${resourceDisplayName}`,
+          },
+          requiresAuth: (desc.credentials?.length ?? 0) > 0,
+        });
+      }
+
+      if (operations.length > 0) {
+        resources.push({
+          name: resourceValue,
+          displayName: resourceDisplayName,
+          description: resOpt.description ?? humanise(resourceValue),
+          operations,
+        });
+      }
+    }
+  } else if (operationProp && operationProp.options && operationProp.options.length > 0) {
+    // ---- Operation-only pattern (no resource) ----
+    // All operations go under a single synthetic resource.
+    const operations: Operation[] = [];
+
+    for (const opOpt of operationProp.options) {
+      if (!isPropertyOption(opOpt)) continue;
+      const operationValue = String(opOpt.value);
+      const method = inferHttpMethod(operationProp, operationValue, desc);
+      const path = inferPath(operationProp, operationValue, desc);
+      const params = collectScopedParameters(desc.properties, undefined, operationValue);
+
+      operations.push({
+        name: operationValue,
+        displayName: humanise(operationValue),
+        description: buildOperationDescription(operationProp, operationValue),
+        method,
+        path,
+        parameters: params,
+        output: {
+          format: "json",
+          description: `Result of ${humanise(operationValue)}`,
+        },
+        requiresAuth: (desc.credentials?.length ?? 0) > 0,
+      });
+    }
+
+    if (operations.length > 0) {
+      resources.push({
+        name: "default",
+        displayName: desc.displayName,
+        description: desc.description,
+        operations,
+      });
+    }
+  } else {
+    // ---- Single-purpose node (no resource, no operation) ----
+    const params = collectScopedParameters(desc.properties, undefined, undefined);
+    const method: HttpMethod = desc.requestDefaults?.method ?? "POST";
+
+    resources.push({
+      name: "default",
+      displayName: desc.displayName,
+      description: desc.description,
+      operations: [
+        {
+          name: "execute",
+          displayName: "Execute",
+          description: desc.description,
+          method,
+          path: desc.requestDefaults?.url ?? "/",
+          parameters: params,
+          output: {
+            format: "json",
+            description: `Result of executing ${desc.displayName}`,
+          },
+          requiresAuth: (desc.credentials?.length ?? 0) > 0,
+        },
+      ],
+    });
+  }
+
+  // ---- Credentials ----
+  const credentials: CredentialSpec[] = (desc.credentials ?? []).map((cred) => ({
+    name: cred.name,
+    displayName: humanise(cred.name),
+    type: inferCredentialType(cred.name),
+    fields: [],  // Fields would be populated from ICredentialType, not INodeTypeDescription
+  }));
+
+  return {
+    name: desc.name,
+    displayName: desc.displayName,
+    description: desc.description,
+    version: resolveVersion(desc),
+    type: "n8n-compat",
+    credentials,
+    resources,
+  };
+}
+
+/**
+ * Convenience: adapt an INodeType (which wraps a description).
+ */
+export function adaptNodeType(
+  nodeType: { description: INodeTypeDescription },
+): PluginDescriptor {
+  return adaptNodeTypeDescription(nodeType.description);
+}

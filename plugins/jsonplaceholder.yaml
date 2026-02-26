@@ -1,0 +1,109 @@
+name: jsonplaceholder
+displayName: JSONPlaceholder
+description: Free fake API for testing and prototyping
+version: "1.0.0"
+baseURL: https://jsonplaceholder.typicode.com
+
+resources:
+  - name: post
+    displayName: Post
+    description: Blog posts
+    operations:
+      - name: list
+        displayName: List Posts
+        description: Get all posts
+        method: GET
+        path: /posts
+        parameters:
+          - name: _limit
+            displayName: Limit
+            description: Number of posts to return
+            type: number
+            required: false
+            default: 10
+            location: query
+          - name: userId
+            displayName: User ID
+            description: Filter by user ID
+            type: number
+            required: false
+            location: query
+
+      - name: get
+        displayName: Get Post
+        description: Get a single post by ID
+        method: GET
+        path: /posts/{id}
+        parameters:
+          - name: id
+            displayName: Post ID
+            description: The post ID
+            type: number
+            required: true
+            location: path
+
+      - name: create
+        displayName: Create Post
+        description: Create a new post
+        method: POST
+        path: /posts
+        parameters:
+          - name: title
+            displayName: Title
+            description: Post title
+            type: string
+            required: true
+            location: body
+          - name: body
+            displayName: Body
+            description: Post body content
+            type: string
+            required: true
+            location: body
+          - name: userId
+            displayName: User ID
+            description: Author user ID
+            type: number
+            required: true
+            location: body
+
+  - name: user
+    displayName: User
+    description: Users
+    operations:
+      - name: list
+        displayName: List Users
+        description: Get all users
+        method: GET
+        path: /users
+        parameters: []
+
+      - name: get
+        displayName: Get User
+        description: Get a single user by ID
+        method: GET
+        path: /users/{id}
+        parameters:
+          - name: id
+            displayName: User ID
+            description: The user ID
+            type: number
+            required: true
+            location: path
+
+  - name: comment
+    displayName: Comment
+    description: Post comments
+    operations:
+      - name: list
+        displayName: List Comments
+        description: Get comments, optionally filtered by post
+        method: GET
+        path: /comments
+        parameters:
+          - name: postId
+            displayName: Post ID
+            description: Filter comments by post ID
+            type: number
+            required: false
+            location: query

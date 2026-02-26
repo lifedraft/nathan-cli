@@ -1,0 +1,35 @@
+{
+  "name": "nathan",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "nathan": "./dist/nathan"
+  },
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --outfile dist/nathan --target bun",
+    "test": "bun test",
+    "lint": "oxlint src/",
+    "lint:fix": "oxlint --fix src/",
+    "fmt": "oxfmt src/",
+    "fmt:check": "oxfmt --check src/",
+    "check": "bun run lint && bun run fmt:check",
+    "postinstall": "cp -r stubs/n8n-core node_modules/n8n-core"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "cli-table3": "^0.6.5",
+    "clipanion": "^4.0.0-rc.4",
+    "n8n-nodes-base": "^1.121.15",
+    "n8n-workflow": "^1.120.9",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.4",
+    "oxfmt": "^0.35.0",
+    "oxlint": "^1.50.0",
+    "typescript": "^5.7.3"
+  }
+}
