@@ -13,7 +13,7 @@ import { execFile } from "node:child_process";
 
 const SERVICE_PREFIX = "nathan";
 
-export interface KeychainEntry {
+interface KeychainEntry {
   service: string;
   account: string;
   password: string;
@@ -211,6 +211,6 @@ export async function keychainDelete(
 /**
  * Build the full keychain service name.
  */
-export function keychainServiceName(service: string): string {
+function keychainServiceName(service: string): string {
   return `${SERVICE_PREFIX}:${service}`;
 }

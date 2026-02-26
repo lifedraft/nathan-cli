@@ -7,7 +7,6 @@
 
 import { Cli, Builtins } from "clipanion";
 import { join } from "node:path";
-import { homedir } from "node:os";
 
 import { DiscoverCommand } from "./commands/discover.js";
 import { DescribeCommand } from "./commands/describe.js";
@@ -18,22 +17,62 @@ import { AuthTestCommand } from "./commands/auth/test.js";
 import { AuthRemoveCommand } from "./commands/auth/remove.js";
 import { PluginInstallCommand } from "./commands/plugin/install.js";
 import { PluginListCommand } from "./commands/plugin/list.js";
-import { getAllPlugins, loadPluginsFromDir } from "./core/plugin-loader.js";
+import { loadConfig } from "./core/config.js";
+import { registry } from "./core/registry-instance.js";
+import { loadPluginsFromDir, registerLoaderStrategy } from "./core/plugin-loader.js";
 import { createPluginCommands } from "./commands/dynamic.js";
+import { loadN8nNodeFromPath, validateModulePath } from "./n8n-compat/loader.js";
+import {
+  registerCredentialIntrospectionStrategy,
+  registerCredentialExpressionResolver,
+} from "./core/credential-introspector.js";
+import {
+  loadCredentialTypeDefinition,
+  resolveCredentialExpression,
+} from "./n8n-compat/credential-type-loader.js";
 
-// Plugin search paths (in order):
-// 1. NATHAN_PLUGINS env var
-// 2. ~/.nathan/plugins
-// 3. ./plugins (relative to cwd, for development)
-const pluginDirs = [
-  process.env.NATHAN_PLUGINS,
-  join(homedir(), ".nathan", "plugins"),
-  join(process.cwd(), "plugins"),
-].filter(Boolean) as string[];
+// ---------------------------------------------------------------------------
+// Register n8n-compat loader strategy
+// ---------------------------------------------------------------------------
 
-for (const dir of pluginDirs) {
-  await loadPluginsFromDir(dir);
+registerLoaderStrategy(async (_filePath, manifest) => {
+  if ((manifest.type === "adapted" || manifest.type === "n8n-compat") && typeof manifest.module === "string") {
+    if (!validateModulePath(manifest.module)) {
+      throw new Error(`Unsafe module path: ${manifest.module}`);
+    }
+    const modulePath = join(process.cwd(), "node_modules", manifest.module);
+    return loadN8nNodeFromPath(modulePath);
+  }
+  return null;
+});
+
+// ---------------------------------------------------------------------------
+// Register n8n-compat credential introspection strategy
+// ---------------------------------------------------------------------------
+
+registerCredentialIntrospectionStrategy(loadCredentialTypeDefinition);
+
+registerCredentialExpressionResolver(resolveCredentialExpression);
+
+// ---------------------------------------------------------------------------
+// Load plugins
+// ---------------------------------------------------------------------------
+
+const config = loadConfig();
+
+try {
+  for (const dir of config.pluginDirs) {
+    await loadPluginsFromDir(dir, registry);
+  }
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(JSON.stringify({ error: { code: "STARTUP_ERROR", message: `Failed to load plugins: ${msg}` } }));
+  process.exit(1);
 }
+
+// ---------------------------------------------------------------------------
+// CLI setup
+// ---------------------------------------------------------------------------
 
 const cli = new Cli({
   binaryLabel: "nathan",
@@ -57,7 +96,7 @@ cli.register(PluginInstallCommand);
 cli.register(PluginListCommand);
 
 // Dynamic commands from loaded plugins
-for (const plugin of getAllPlugins()) {
+for (const plugin of registry.getAll()) {
   for (const cmd of createPluginCommands(plugin)) {
     cli.register(cmd);
   }

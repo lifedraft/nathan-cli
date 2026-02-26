@@ -17,7 +17,7 @@ export interface OutputOptions {
 /**
  * Format and print a result object.
  */
-export function formatOutput(data: unknown, options: OutputOptions = {}): string {
+function formatOutput(data: unknown, options: OutputOptions = {}): string {
   if (options.human) {
     return formatHuman(data);
   }

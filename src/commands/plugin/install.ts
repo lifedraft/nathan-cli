@@ -3,7 +3,7 @@
  */
 
 import { Command, Option } from "clipanion";
-import { printOutput } from "../../core/output.js";
+import { printOutput } from "../output.js";
 
 export class PluginInstallCommand extends Command {
   static override paths = [["plugin", "install"]];

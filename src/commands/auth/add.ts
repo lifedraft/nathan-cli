@@ -1,15 +1,18 @@
 /**
  * nathan auth add <service> — Add credentials for a service.
  *
- * Dynamically discovers credential fields from the plugin's n8n credential
- * type definition. The --token shortcut maps to whichever field has
- * typeOptions.password: true.
+ * Dynamically discovers credential fields from the plugin's credential
+ * type definition via the core introspection interface. The --token shortcut
+ * maps to whichever field has isPassword: true.
  */
 
 import { Command, Option } from "clipanion";
-import { getPlugin } from "../../core/plugin-loader.js";
-import { createCredentialStore, loadCredentialTypeDefinition } from "../../core/credential-store.js";
-import { printOutput, printError } from "../../core/output.js";
+import { createCredentialStore } from "../../core/credential-store.js";
+import { printOutput, printError } from "../output.js";
+import { parseFlagsAsStrings } from "../../core/flag-parser.js";
+import { loadCredentialType } from "../../core/credential-introspector.js";
+import { registry } from "../../core/registry-instance.js";
+import { resolveCredentialFields } from "../../core/credential-validator.js";
 
 export class AuthAddCommand extends Command {
   static override paths = [["auth", "add"]];
@@ -32,7 +35,7 @@ export class AuthAddCommand extends Command {
   args = Option.Proxy();
 
   async execute(): Promise<void> {
-    const plugin = getPlugin(this.service);
+    const plugin = registry.get(this.service);
     if (!plugin) {
       printError(`Unknown service "${this.service}". Run 'nathan discover' to see available services.`, { human: this.human });
       process.exitCode = 1;
@@ -46,98 +49,39 @@ export class AuthAddCommand extends Command {
       return;
     }
 
-    // Load n8n credential type definition for field introspection
-    const credTypeDef = loadCredentialTypeDefinition(credSpec.name);
+    // Load credential type definition for field introspection (via core interface)
+    const credTypeInfo = loadCredentialType(credSpec.name);
 
     // Parse flags from proxy args
-    const flags = parseAuthFlags(this.args);
+    const flags = parseFlagsAsStrings(this.args);
 
-    // Build the fields map — user-provided values first, then defaults
-    const fields: Record<string, string> = {};
-
-    if (credTypeDef) {
-      const passwordField = credTypeDef.properties.find((p) => p.isPassword);
-
-      // --token shortcut maps to the password field
-      if (flags.token && passwordField) {
-        fields[passwordField.name] = flags.token;
-      }
-
-      // Map explicit flags to matching fields
-      for (const prop of credTypeDef.properties) {
-        if (prop.name in flags) {
-          fields[prop.name] = flags[prop.name];
-        }
-      }
-
-      // Validate all required fields are present
-      const missing = credTypeDef.properties
-        .filter((p) => p.required && !(p.name in fields))
-        .map((p) => `--${p.name}`);
-
-      if (missing.length > 0) {
-        const allFields = credTypeDef.properties
-          .map((p) => `--${p.name}${p.required ? " (required)" : ""}`)
-          .join(", ");
-        const tokenHint = passwordField ? " or --token=<value>" : "";
-        printError(
-          `Missing required fields: ${missing.join(", ")}${tokenHint}\nAvailable fields: ${allFields}`,
-          { human: this.human },
-        );
-        process.exitCode = 1;
-        return;
-      }
-
-      // Fill defaults for fields not provided
-      for (const prop of credTypeDef.properties) {
-        if (!(prop.name in fields) && prop.default !== undefined && prop.default !== "") {
-          fields[prop.name] = String(prop.default);
-        }
-      }
-    } else {
-      // Fallback: use the plugin's CredentialSpec fields
-      const passwordField = credSpec.fields.find((f) => f.type === "password");
-
-      if (flags.token && passwordField) {
-        fields[passwordField.name] = flags.token;
-      }
-
-      for (const field of credSpec.fields) {
-        if (field.name in flags) {
-          fields[field.name] = flags[field.name];
-        }
-      }
-
-      const missing = credSpec.fields
-        .filter((f) => f.required && !(f.name in fields))
-        .map((f) => `--${f.name}`);
-
-      if (missing.length > 0) {
-        const allFields = credSpec.fields
-          .map((f) => `--${f.name}${f.required ? " (required)" : ""}`)
-          .join(", ");
-        const tokenHint = passwordField ? " or --token=<value>" : "";
-        printError(
-          `Missing required fields: ${missing.join(", ")}${tokenHint}\nAvailable fields: ${allFields}`,
-          { human: this.human },
-        );
-        process.exitCode = 1;
-        return;
-      }
-
-      for (const field of credSpec.fields) {
-        if (!(field.name in fields) && field.default !== undefined && field.default !== "") {
-          fields[field.name] = field.default;
-        }
-      }
+    // Validate and resolve credential fields
+    const validation = resolveCredentialFields(credTypeInfo, credSpec, flags);
+    if (!validation.success) {
+      const { missing, available, hasTokenShortcut } = validation.error;
+      const tokenHint = hasTokenShortcut ? " or --token=<value>" : "";
+      printError(
+        `Missing required fields: ${missing.join(", ")}${tokenHint}\nAvailable fields: ${available.join(", ")}`,
+        { human: this.human },
+      );
+      process.exitCode = 1;
+      return;
     }
 
+    const fields = validation.fields;
+
     // Store credentials
-    const store = createCredentialStore();
-    await store.set(this.service, {
-      type: credSpec.name,
-      fields,
-    });
+    try {
+      const store = createCredentialStore();
+      await store.set(this.service, { type: credSpec.name, fields });
+    } catch (err) {
+      printError(
+        `Failed to store credentials: ${err instanceof Error ? err.message : String(err)}`,
+        { human: this.human },
+      );
+      process.exitCode = 1;
+      return;
+    }
 
     const fieldNames = Object.keys(fields);
     printOutput(
@@ -151,27 +95,4 @@ export class AuthAddCommand extends Command {
       { human: this.human },
     );
   }
-}
-
-function parseAuthFlags(args: string[]): Record<string, string> {
-  const flags: Record<string, string> = {};
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
-    if (arg.startsWith("--")) {
-      const eqIndex = arg.indexOf("=");
-      if (eqIndex !== -1) {
-        flags[arg.slice(2, eqIndex)] = arg.slice(eqIndex + 1);
-      } else {
-        const key = arg.slice(2);
-        const next = args[i + 1];
-        if (next && !next.startsWith("--")) {
-          flags[key] = next;
-          i++;
-        }
-      }
-    }
-    i++;
-  }
-  return flags;
 }

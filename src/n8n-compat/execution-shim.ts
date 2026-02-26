@@ -17,60 +17,75 @@ import type {
   IHttpRequestOptions,
   IBinaryData,
 } from "./types.ts";
+import { loadCredentialAuthenticate as loadCredAuth } from "./credential-type-loader.js";
+import { applyCredentialAuth } from "../core/credential-injector.js";
 
 // ---------------------------------------------------------------------------
-// Internal helpers
+// Shared fetch helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Build a standard fetch `RequestInit` from an n8n IRequestOptions object.
- */
-function requestOptionsToFetchInit(opts: IRequestOptions): {
+interface FetchSpec {
   url: string;
   init: RequestInit;
-} {
-  const url = opts.url ?? opts.uri ?? "";
+}
 
-  const method = (opts.method ?? "GET").toUpperCase();
-  const headers = new Headers(opts.headers ?? {});
+/**
+ * Core fetch builder — shared by both IRequestOptions and IHttpRequestOptions paths.
+ * Handles method, headers, body serialization, query strings, and timeout.
+ */
+function buildFetchSpec(options: {
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+  json?: boolean;
+  form?: Record<string, unknown>;
+  formData?: Record<string, unknown>;
+  auth?: { user: string; pass: string };
+  qs?: Record<string, unknown>;
+  qsArrayFormat?: string;
+  followRedirect?: boolean;
+  timeout?: number;
+}): FetchSpec {
+  const method = (options.method ?? "GET").toUpperCase();
+  const headers = new Headers(options.headers ?? {});
   const init: RequestInit = {
     method,
     headers,
-    redirect: opts.followRedirect === false ? "manual" : "follow",
+    redirect: options.followRedirect === false ? "manual" : "follow",
   };
 
-  // Body handling — skip for GET/HEAD/OPTIONS (fetch throws otherwise)
   const canHaveBody = !["GET", "HEAD", "OPTIONS"].includes(method);
-  if (canHaveBody && opts.body !== undefined && opts.body !== null) {
-    // Skip empty objects (n8n nodes often pass {} as default body)
-    const isEmpty = typeof opts.body === "object" && Object.keys(opts.body as Record<string, unknown>).length === 0;
+
+  // Body handling
+  if (canHaveBody && options.body !== undefined && options.body !== null) {
+    const isEmpty = typeof options.body === "object" && Object.keys(options.body as Record<string, unknown>).length === 0;
     if (!isEmpty) {
-      if (opts.json !== false && typeof opts.body === "object") {
+      if (options.json !== false && typeof options.body === "object") {
         headers.set("Content-Type", "application/json");
-        init.body = JSON.stringify(opts.body);
-      } else if (typeof opts.body === "string") {
-        init.body = opts.body;
+        init.body = JSON.stringify(options.body);
+      } else if (typeof options.body === "string") {
+        init.body = options.body;
       } else {
-        init.body = JSON.stringify(opts.body);
+        init.body = JSON.stringify(options.body);
       }
     }
   }
 
   // Form handling
-  if (canHaveBody && opts.form) {
+  if (canHaveBody && options.form) {
     headers.set("Content-Type", "application/x-www-form-urlencoded");
     const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(opts.form)) {
+    for (const [k, v] of Object.entries(options.form)) {
       params.set(k, String(v));
     }
     init.body = params.toString();
   }
 
-  if (canHaveBody && opts.formData) {
-    // Let the browser/runtime set the multipart boundary automatically.
+  if (canHaveBody && options.formData) {
     headers.delete("Content-Type");
     const fd = new FormData();
-    for (const [k, v] of Object.entries(opts.formData)) {
+    for (const [k, v] of Object.entries(options.formData)) {
       if (v instanceof Blob) {
         fd.append(k, v);
       } else {
@@ -81,71 +96,21 @@ function requestOptionsToFetchInit(opts: IRequestOptions): {
   }
 
   // Basic auth
-  if (opts.auth) {
-    const encoded = btoa(`${opts.auth.user}:${opts.auth.pass}`);
+  if (options.auth) {
+    const encoded = btoa(`${options.auth.user}:${options.auth.pass}`);
     headers.set("Authorization", `Basic ${encoded}`);
   }
 
   // Query string
-  let fullUrl = url;
-  if (opts.qs && Object.keys(opts.qs).length > 0) {
+  let fullUrl = options.url;
+  if (options.qs && Object.keys(options.qs).length > 0) {
     const sep = fullUrl.includes("?") ? "&" : "?";
     const qsParts: string[] = [];
-    for (const [k, v] of Object.entries(opts.qs)) {
-      qsParts.push(`${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`);
-    }
-    fullUrl = `${fullUrl}${sep}${qsParts.join("&")}`;
-  }
-
-  // Timeout via AbortSignal
-  if (opts.timeout) {
-    init.signal = AbortSignal.timeout(opts.timeout);
-  }
-
-  return { url: fullUrl, init };
-}
-
-/**
- * Build a standard fetch `RequestInit` from an n8n IHttpRequestOptions object.
- */
-function httpRequestOptionsToFetchInit(opts: IHttpRequestOptions): {
-  url: string;
-  init: RequestInit;
-} {
-  const method = (opts.method ?? "GET").toUpperCase();
-  const headers = new Headers(opts.headers ?? {});
-  const init: RequestInit = {
-    method,
-    headers,
-    redirect: opts.followRedirect === false ? "manual" : "follow",
-  };
-
-  // Body — skip for GET/HEAD/OPTIONS
-  const canHaveBody = !["GET", "HEAD", "OPTIONS"].includes(method);
-  if (canHaveBody && opts.body !== undefined && opts.body !== null) {
-    const isEmpty = typeof opts.body === "object" && Object.keys(opts.body as Record<string, unknown>).length === 0;
-    if (!isEmpty) {
-      if (opts.json !== false && typeof opts.body === "object") {
-        headers.set("Content-Type", "application/json");
-        init.body = JSON.stringify(opts.body);
-      } else if (typeof opts.body === "string") {
-        init.body = opts.body;
-      } else {
-        init.body = JSON.stringify(opts.body);
-      }
-    }
-  }
-
-  // Query string
-  let fullUrl = opts.url;
-  if (opts.qs && Object.keys(opts.qs).length > 0) {
-    const sep = fullUrl.includes("?") ? "&" : "?";
-    const qsParts: string[] = [];
-    for (const [k, v] of Object.entries(opts.qs)) {
+    const arrayFormat = options.qsArrayFormat ?? "repeat";
+    for (const [k, v] of Object.entries(options.qs)) {
       if (Array.isArray(v)) {
-        const format = opts.arrayFormat ?? "brackets";
         for (const item of v) {
-          const key = format === "brackets" ? `${k}[]` : k;
+          const key = arrayFormat === "brackets" ? `${k}[]` : k;
           qsParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(item))}`);
         }
       } else {
@@ -156,16 +121,55 @@ function httpRequestOptionsToFetchInit(opts: IHttpRequestOptions): {
   }
 
   // Timeout
-  if (opts.timeout) {
-    init.signal = AbortSignal.timeout(opts.timeout);
+  if (options.timeout) {
+    init.signal = AbortSignal.timeout(options.timeout);
   }
 
   return { url: fullUrl, init };
 }
 
-/**
- * Execute a fetch and parse the response.
- */
+function requestOptionsToFetchSpec(opts: IRequestOptions): FetchSpec {
+  return buildFetchSpec({
+    url: opts.url ?? opts.uri ?? "",
+    method: opts.method,
+    headers: opts.headers,
+    body: opts.body,
+    json: opts.json,
+    form: opts.form,
+    formData: opts.formData,
+    auth: opts.auth,
+    qs: opts.qs,
+    followRedirect: opts.followRedirect,
+    timeout: opts.timeout,
+  });
+}
+
+function httpRequestOptionsToFetchSpec(opts: IHttpRequestOptions): FetchSpec {
+  return buildFetchSpec({
+    url: opts.url,
+    method: opts.method,
+    headers: opts.headers,
+    body: opts.body,
+    json: opts.json,
+    qs: opts.qs,
+    qsArrayFormat: opts.arrayFormat,
+    followRedirect: opts.followRedirect,
+    timeout: opts.timeout,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Response parsing
+// ---------------------------------------------------------------------------
+
+async function parseResponseBody(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    return response.json();
+  }
+  return response.text();
+}
+
 async function doFetch(
   url: string,
   init: RequestInit,
@@ -194,226 +198,282 @@ async function doFetch(
   return parseResponseBody(response);
 }
 
+// ---------------------------------------------------------------------------
+// Credential injection for HTTP helpers
+// ---------------------------------------------------------------------------
+
 /**
- * Parse the response body, preferring JSON.
+ * Apply credential auth to a fetch spec and return the final URL.
+ * Shared by requestWithAuthentication and httpRequestWithAuthentication.
  */
-async function parseResponseBody(response: Response): Promise<unknown> {
-  const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
-    return response.json();
+function applyAuthToFetchSpec(
+  credentialType: string,
+  credentials: Record<string, Record<string, unknown>>,
+  spec: FetchSpec,
+): FetchSpec {
+  const creds = credentials[credentialType];
+  if (!creds) {
+    throw new Error(`No credentials of type "${credentialType}" provided.`);
   }
-  return response.text();
-}
 
-/**
- * Try to load an n8n credential type definition and use its `authenticate`
- * config to inject credentials into request options.
- */
-function loadCredentialAuthenticate(credentialType: string): any | null {
-  try {
-    // n8n credential files follow a naming convention
-    const pascalName = credentialType.charAt(0).toUpperCase() + credentialType.slice(1);
-    const mod = require(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
-    const CredClass = mod[pascalName] ?? mod.default ?? Object.values(mod)[0];
-    if (CredClass && typeof CredClass === "function") {
-      const instance = new CredClass();
-      return instance.authenticate ?? null;
+  const headers = spec.init.headers instanceof Headers ? spec.init.headers : new Headers();
+
+  let authConfig = null;
+  const auth = loadCredAuth(credentialType);
+  if (auth) authConfig = auth;
+
+  const injection = applyCredentialAuth(creds, authConfig);
+  for (const [key, value] of Object.entries(injection.headers)) {
+    headers.set(key, value);
+  }
+
+  let finalUrl = spec.url;
+  if (injection.queryParams) {
+    for (const [key, value] of Object.entries(injection.queryParams)) {
+      const sep = finalUrl.includes("?") ? "&" : "?";
+      finalUrl = `${finalUrl}${sep}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
     }
-  } catch {}
-  return null;
+  }
+
+  return { url: finalUrl, init: { ...spec.init, headers } };
 }
 
-/**
- * Resolve an n8n credential expression like '=token {{$credentials?.accessToken}}'
- * by substituting credential values.
- */
-function resolveCredentialExpression(
-  template: string,
-  credentials: Record<string, unknown>,
-): string {
-  // Strip leading '=' if present (n8n expression marker)
-  let expr = template.startsWith("=") ? template.slice(1) : template;
-  // Replace {{$credentials?.field}} or {{$credentials.field}}
-  expr = expr.replace(
-    /\{\{\s*\$credentials\??\.\s*(\w+)\s*\}\}/g,
-    (_match, key) => {
-      const val = credentials[key];
-      return val !== undefined ? String(val) : "";
+// ---------------------------------------------------------------------------
+// Factory: parameter access
+// ---------------------------------------------------------------------------
+
+function createParameterAccess(
+  params: Record<string, unknown>,
+  propDefaults: Map<string, unknown>,
+) {
+  return function getNodeParameter(
+    parameterName: string,
+    _itemIndex: number,
+    fallbackValue?: unknown,
+  ): unknown {
+    if (parameterName in params) {
+      return params[parameterName];
+    }
+
+    // Dot-path traversal: "options.limit" -> params.options.limit
+    const parts = parameterName.split(".");
+    let current: unknown = params;
+    for (const part of parts) {
+      if (current === null || current === undefined || typeof current !== "object") break;
+      current = (current as Record<string, unknown>)[part];
+    }
+    if (current !== undefined && current !== params) {
+      return current;
+    }
+
+    if (arguments.length >= 3) return fallbackValue;
+    if (propDefaults.has(parameterName)) return propDefaults.get(parameterName);
+    return undefined;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Factory: HTTP helpers
+// ---------------------------------------------------------------------------
+
+function createHttpHelpers(
+  credentials: Record<string, Record<string, unknown>>,
+): IExecuteFunctions["helpers"] {
+  return {
+    async request(opts: IRequestOptions): Promise<unknown> {
+      const spec = requestOptionsToFetchSpec(opts);
+      return doFetch(spec.url, spec.init, opts.resolveWithFullResponse ?? false, opts.simple === false);
     },
-  );
-  return expr;
+
+    async requestWithAuthentication(
+      credentialType: string,
+      opts: IRequestOptions,
+      _additionalCredentialOptions?: Record<string, unknown>,
+    ): Promise<unknown> {
+      // Detect unimplemented operations
+      const rawUrl = opts.url ?? opts.uri ?? "";
+      try {
+        const parsed = new URL(rawUrl);
+        if (parsed.pathname === "" || parsed.pathname === "/") {
+          throw new Error(
+            `Operation not implemented: the n8n node did not set an API endpoint. ` +
+            `URL resolved to base: ${rawUrl}`,
+          );
+        }
+      } catch (e) {
+        if (e instanceof Error && e.message.startsWith("Operation not implemented")) throw e;
+      }
+
+      const spec = requestOptionsToFetchSpec(opts);
+      const authed = applyAuthToFetchSpec(credentialType, credentials, spec);
+      return doFetch(authed.url, authed.init, opts.resolveWithFullResponse ?? false, opts.simple === false);
+    },
+
+    async httpRequest(opts: IHttpRequestOptions): Promise<unknown> {
+      const spec = httpRequestOptionsToFetchSpec(opts);
+      return doFetch(spec.url, spec.init, opts.returnFullResponse ?? false, opts.ignoreHttpStatusErrors ?? false);
+    },
+
+    async httpRequestWithAuthentication(
+      credentialType: string,
+      opts: IHttpRequestOptions,
+      _additionalCredentialOptions?: Record<string, unknown>,
+    ): Promise<unknown> {
+      const spec = httpRequestOptionsToFetchSpec(opts);
+      const authed = applyAuthToFetchSpec(credentialType, credentials, spec);
+      return doFetch(authed.url, authed.init, opts.returnFullResponse ?? false, opts.ignoreHttpStatusErrors ?? false);
+    },
+
+    async prepareBinaryData(
+      binaryData: Buffer | Uint8Array,
+      fileName?: string,
+      mimeType?: string,
+    ): Promise<IBinaryData> {
+      const buffer = binaryData instanceof Buffer ? binaryData : Buffer.from(binaryData);
+      return {
+        data: buffer.toString("base64"),
+        mimeType: mimeType ?? "application/octet-stream",
+        fileName: fileName ?? "file",
+        fileSize: buffer.length,
+      };
+    },
+
+    async getBinaryDataBuffer(
+      itemIndex: number,
+      propertyName: string,
+    ): Promise<Buffer> {
+      // inputData is captured via closure in createExecutionContext
+      throw new Error(`getBinaryDataBuffer not available in this context (item ${itemIndex}, property "${propertyName}")`);
+    },
+
+    returnJsonArray(jsonData: unknown): INodeExecutionData[] {
+      if (Array.isArray(jsonData)) {
+        return jsonData.map((item) => ({
+          json: typeof item === "object" && item !== null ? item : { data: item },
+        }));
+      }
+      if (typeof jsonData === "object" && jsonData !== null) {
+        return [{ json: jsonData as Record<string, unknown> }];
+      }
+      return [{ json: { data: jsonData } }];
+    },
+
+    constructExecutionMetaData(
+      items: INodeExecutionData[],
+      options: { itemData: { item: number; input?: number } },
+    ): INodeExecutionData[] {
+      return items.map((item) => ({ ...item, pairedItem: options.itemData }));
+    },
+
+    assertBinaryData(_itemIndex: number, _propertyName: string): IBinaryData {
+      throw new Error(`assertBinaryData not available in this context`);
+    },
+
+    async binaryToBuffer(body: IBinaryData): Promise<Buffer> {
+      return Buffer.from(body.data, "base64");
+    },
+  };
 }
 
-/**
- * Inject credentials into request options. First tries to use the n8n
- * credential type's `authenticate` config (which knows exactly how to
- * apply credentials). Falls back to common patterns.
- */
-function injectCredentials(
-  credentials: Record<string, unknown>,
-  headers: Headers,
-  url: string,
-  _body: unknown,
-  credentialType?: string,
-): { url: string; body: unknown } {
-  // Try n8n credential authenticate config first
-  if (credentialType) {
-    const auth = loadCredentialAuthenticate(credentialType);
-    if (auth?.type === "generic" && auth.properties) {
-      // Apply headers
-      if (auth.properties.headers) {
-        for (const [key, template] of Object.entries(auth.properties.headers as Record<string, string>)) {
-          headers.set(key, resolveCredentialExpression(template, credentials));
-        }
-      }
-      // Apply query string
-      if (auth.properties.qs) {
-        for (const [key, template] of Object.entries(auth.properties.qs as Record<string, string>)) {
-          const sep = url.includes("?") ? "&" : "?";
-          url = `${url}${sep}${encodeURIComponent(key)}=${encodeURIComponent(resolveCredentialExpression(String(template), credentials))}`;
-        }
-      }
-      // Apply body
-      if (auth.properties.body) {
-        // Merge into body if it's an object
-      }
-      // Apply auth (basic)
-      if (auth.properties.auth) {
-        const user = resolveCredentialExpression(auth.properties.auth.username, credentials);
-        const pass = resolveCredentialExpression(auth.properties.auth.password, credentials);
-        const encoded = btoa(`${user}:${pass}`);
-        headers.set("Authorization", `Basic ${encoded}`);
-      }
-      return { url, body: _body };
+// ---------------------------------------------------------------------------
+// Logger (only respects NATHAN_DEBUG, not generic DEBUG)
+// ---------------------------------------------------------------------------
+
+const shimLogger = {
+  debug(message: string, meta?: Record<string, unknown>): void {
+    if (process.env.NATHAN_DEBUG) {
+      console.debug(`[n8n-shim] DEBUG: ${message}`, meta ?? "");
     }
-  }
-
-  // Fallback: common patterns
-
-  // API key in header
-  if (credentials.apiKey && typeof credentials.apiKey === "string") {
-    const headerName =
-      typeof credentials.headerName === "string"
-        ? credentials.headerName
-        : "Authorization";
-    headers.set(headerName, credentials.apiKey);
-  }
-
-  // Bearer token
-  if (credentials.accessToken && typeof credentials.accessToken === "string" && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${credentials.accessToken}`);
-  }
-  if (credentials.token && typeof credentials.token === "string" && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${credentials.token}`);
-  }
-
-  // Basic auth
-  if (
-    credentials.user &&
-    credentials.password &&
-    typeof credentials.user === "string" &&
-    typeof credentials.password === "string"
-  ) {
-    const encoded = btoa(`${credentials.user}:${credentials.password}`);
-    headers.set("Authorization", `Basic ${encoded}`);
-  }
-
-  return { url, body: _body };
-}
+  },
+  info(message: string, meta?: Record<string, unknown>): void {
+    console.info(`[n8n-shim] INFO: ${message}`, meta ?? "");
+  },
+  warn(message: string, meta?: Record<string, unknown>): void {
+    console.warn(`[n8n-shim] WARN: ${message}`, meta ?? "");
+  },
+  error(message: string, meta?: Record<string, unknown>): void {
+    console.error(`[n8n-shim] ERROR: ${message}`, meta ?? "");
+  },
+};
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
+interface NodePropertyDef {
+  name: string;
+  type?: string;
+  default?: unknown;
+}
+
 export interface ExecutionContextOptions {
-  /** Parameter values keyed by name. */
   params: Record<string, unknown>;
-  /** Credential values keyed by credential type. */
   credentials: Record<string, Record<string, unknown>>;
-  /** Timezone string (defaults to UTC). */
+  nodeProperties?: NodePropertyDef[];
   timezone?: string;
-  /** Whether to continue on error (defaults to false). */
   continueOnFail?: boolean;
 }
 
 /**
- * Create an `IExecuteFunctions`-compatible context for running n8n node
- * code from the nathan CLI.
- *
- * Usage:
- * ```ts
- * const ctx = createExecutionContext({
- *   params: { owner: "acme", repo: "widgets" },
- *   credentials: { githubApi: { accessToken: "ghp_..." } },
- * });
- * const result = await nodeInstance.execute.call(ctx);
- * ```
+ * Create an `IExecuteFunctions`-compatible context for running n8n node code.
  */
 export function createExecutionContext(
   options: ExecutionContextOptions,
 ): IExecuteFunctions {
-  const { params, credentials, timezone = "UTC", continueOnFail: shouldContinueOnFail = false } = options;
+  const { params, credentials, nodeProperties, timezone = "UTC", continueOnFail: shouldContinueOnFail = false } = options;
 
-  // Wrap params as a single-item input data array.
+  // Build property defaults lookup
+  const propDefaults = new Map<string, unknown>();
+  if (nodeProperties) {
+    for (const prop of nodeProperties) {
+      propDefaults.set(prop.name, prop.default);
+    }
+  }
+
   const inputData: INodeExecutionData[] = [{ json: { ...params } }];
+  const helpers = createHttpHelpers(credentials);
 
-  const context: IExecuteFunctions = {
-    // ---- Parameter access ----
+  // Wire up binary helpers that need inputData closure
+  helpers.getBinaryDataBuffer = async (itemIndex: number, propertyName: string): Promise<Buffer> => {
+    const item = inputData[itemIndex];
+    if (!item?.binary?.[propertyName]) {
+      throw new Error(`No binary data found for property "${propertyName}" on item ${itemIndex}.`);
+    }
+    return Buffer.from(item.binary[propertyName].data, "base64");
+  };
 
-    getNodeParameter(
-      parameterName: string,
-      _itemIndex: number,
-      fallbackValue?: unknown,
-    ): unknown {
-      // Support dot-notation paths: "options.limit" -> params.options.limit
-      if (parameterName in params) {
-        return params[parameterName];
-      }
+  helpers.assertBinaryData = (itemIndex: number, propertyName: string): IBinaryData => {
+    const item = inputData[itemIndex];
+    if (!item?.binary?.[propertyName]) {
+      throw new Error(`No binary data found for property "${propertyName}" on item ${itemIndex}.`);
+    }
+    return item.binary[propertyName];
+  };
 
-      // Try dot-path traversal
-      const parts = parameterName.split(".");
-      let current: unknown = params;
-      for (const part of parts) {
-        if (current === null || current === undefined || typeof current !== "object") {
-          return fallbackValue;
-        }
-        current = (current as Record<string, unknown>)[part];
-      }
-
-      return current !== undefined ? current : fallbackValue;
-    },
-
-    // ---- Credential access ----
+  return {
+    getNodeParameter: createParameterAccess(params, propDefaults),
 
     async getCredentials(type: string, _itemIndex?: number): Promise<Record<string, unknown>> {
       const creds = credentials[type];
       if (!creds) {
         throw new Error(
           `No credentials of type "${type}" provided. ` +
-            `Available types: ${Object.keys(credentials).join(", ") || "(none)"}`,
+          `Available types: ${Object.keys(credentials).join(", ") || "(none)"}`,
         );
       }
       return { ...creds };
     },
 
-    // ---- Input data ----
-
     getInputData(_inputIndex?: number, _inputName?: string): INodeExecutionData[] {
       return inputData;
     },
-
-    // ---- Workflow / node metadata (stubs) ----
 
     getWorkflow(): IWorkflowMetadata {
       return { id: "nathan-cli", name: "nathan CLI Execution", active: true };
     },
 
     getNode(): INodeMetadata {
-      return {
-        name: "nathan-shim",
-        type: "nathan-shim",
-        typeVersion: 1,
-      };
+      return { name: "nathan-shim", type: "nathan-shim", typeVersion: 1 };
     },
 
     getMode(): "manual" {
@@ -437,176 +497,16 @@ export function createExecutionContext(
     },
 
     evaluateExpression(expression: string, _itemIndex: number): unknown {
-      // Basic expression evaluation: replace {{ $json.key }} patterns
-      // with values from params.  Full n8n expression support is not
-      // implemented; this handles the most common case.
-      const replaced = expression.replace(
+      return expression.replace(
         /\{\{\s*\$json\.(\w+)\s*\}\}/g,
         (_match, key) => {
           const val = params[key];
           return val !== undefined ? String(val) : "";
         },
       );
-      return replaced;
     },
 
-    // ---- Helpers ----
-
-    helpers: {
-      async request(opts: IRequestOptions): Promise<unknown> {
-        const { url, init } = requestOptionsToFetchInit(opts);
-        return doFetch(
-          url,
-          init,
-          opts.resolveWithFullResponse ?? false,
-          opts.simple === false,
-        );
-      },
-
-      async requestWithAuthentication(
-        credentialType: string,
-        opts: IRequestOptions,
-        _additionalCredentialOptions?: Record<string, unknown>,
-      ): Promise<unknown> {
-        const creds = credentials[credentialType];
-        if (!creds) {
-          throw new Error(`No credentials of type "${credentialType}" provided.`);
-        }
-
-        const { url, init } = requestOptionsToFetchInit(opts);
-        const headers = init.headers instanceof Headers ? init.headers : new Headers();
-        const injected = injectCredentials(creds, headers, url, init.body, credentialType);
-        init.headers = headers;
-        init.body = injected.body as BodyInit | null | undefined;
-
-        return doFetch(
-          injected.url,
-          init,
-          opts.resolveWithFullResponse ?? false,
-          opts.simple === false,
-        );
-      },
-
-      async httpRequest(opts: IHttpRequestOptions): Promise<unknown> {
-        const { url, init } = httpRequestOptionsToFetchInit(opts);
-        return doFetch(
-          url,
-          init,
-          opts.returnFullResponse ?? false,
-          opts.ignoreHttpStatusErrors ?? false,
-        );
-      },
-
-      async httpRequestWithAuthentication(
-        credentialType: string,
-        opts: IHttpRequestOptions,
-        _additionalCredentialOptions?: Record<string, unknown>,
-      ): Promise<unknown> {
-        const creds = credentials[credentialType];
-        if (!creds) {
-          throw new Error(`No credentials of type "${credentialType}" provided.`);
-        }
-
-        const { url, init } = httpRequestOptionsToFetchInit(opts);
-        const headers = init.headers instanceof Headers ? init.headers : new Headers();
-        const injected = injectCredentials(creds, headers, url, init.body, credentialType);
-        init.headers = headers;
-        init.body = injected.body as BodyInit | null | undefined;
-
-        return doFetch(
-          injected.url,
-          init,
-          opts.returnFullResponse ?? false,
-          opts.ignoreHttpStatusErrors ?? false,
-        );
-      },
-
-      async prepareBinaryData(
-        binaryData: Buffer | Uint8Array,
-        fileName?: string,
-        mimeType?: string,
-      ): Promise<IBinaryData> {
-        // Encode to base64 for storage.
-        const buffer = binaryData instanceof Buffer ? binaryData : Buffer.from(binaryData);
-        const base64 = buffer.toString("base64");
-
-        return {
-          data: base64,
-          mimeType: mimeType ?? "application/octet-stream",
-          fileName: fileName ?? "file",
-          fileSize: buffer.length,
-        };
-      },
-
-      async getBinaryDataBuffer(
-        itemIndex: number,
-        propertyName: string,
-      ): Promise<Buffer> {
-        const item = inputData[itemIndex];
-        if (!item?.binary?.[propertyName]) {
-          throw new Error(
-            `No binary data found for property "${propertyName}" on item ${itemIndex}.`,
-          );
-        }
-        return Buffer.from(item.binary[propertyName].data, "base64");
-      },
-
-      returnJsonArray(jsonData: unknown): INodeExecutionData[] {
-        if (Array.isArray(jsonData)) {
-          return jsonData.map((item) => ({
-            json: typeof item === "object" && item !== null ? item : { data: item },
-          }));
-        }
-        if (typeof jsonData === "object" && jsonData !== null) {
-          return [{ json: jsonData as Record<string, unknown> }];
-        }
-        return [{ json: { data: jsonData } }];
-      },
-
-      constructExecutionMetaData(
-        items: INodeExecutionData[],
-        options: { itemData: { item: number; input?: number } },
-      ): INodeExecutionData[] {
-        return items.map((item) => ({
-          ...item,
-          pairedItem: options.itemData,
-        }));
-      },
-
-      assertBinaryData(itemIndex: number, propertyName: string): IBinaryData {
-        const item = inputData[itemIndex];
-        if (!item?.binary?.[propertyName]) {
-          throw new Error(
-            `No binary data found for property "${propertyName}" on item ${itemIndex}.`,
-          );
-        }
-        return item.binary[propertyName];
-      },
-
-      async binaryToBuffer(body: IBinaryData): Promise<Buffer> {
-        return Buffer.from(body.data, "base64");
-      },
-    },
-
-    // ---- Logger ----
-
-    logger: {
-      debug(message: string, meta?: Record<string, unknown>): void {
-        if (process.env.DEBUG || process.env.NATHAN_DEBUG) {
-          console.debug(`[n8n-shim] DEBUG: ${message}`, meta ?? "");
-        }
-      },
-      info(message: string, meta?: Record<string, unknown>): void {
-        console.info(`[n8n-shim] INFO: ${message}`, meta ?? "");
-      },
-      warn(message: string, meta?: Record<string, unknown>): void {
-        console.warn(`[n8n-shim] WARN: ${message}`, meta ?? "");
-      },
-      error(message: string, meta?: Record<string, unknown>): void {
-        console.error(`[n8n-shim] ERROR: ${message}`, meta ?? "");
-      },
-    },
+    helpers,
+    logger: shimLogger,
   };
-
-  return context;
 }

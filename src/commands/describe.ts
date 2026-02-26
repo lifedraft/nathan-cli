@@ -1,6 +1,7 @@
 import { Command, Option } from "clipanion";
-import { printOutput } from "../core/output.js";
-import { getPlugin } from "../core/plugin-loader.js";
+import { printOutput } from "./output.js";
+import { registry } from "../core/registry-instance.js";
+import { findResource, findOperation } from "../core/plugin-interface.js";
 
 export class DescribeCommand extends Command {
   static override paths = [["describe"]];
@@ -23,7 +24,7 @@ export class DescribeCommand extends Command {
   });
 
   async execute(): Promise<void> {
-    const plugin = getPlugin(this.service);
+    const plugin = registry.get(this.service);
     if (!plugin) {
       printOutput({
         error: {
@@ -52,7 +53,7 @@ export class DescribeCommand extends Command {
       return;
     }
 
-    const res = plugin.descriptor.resources.find((r) => r.name === this.resource);
+    const res = findResource(plugin.descriptor, this.resource!);
     if (!res) {
       printOutput({
         error: {
@@ -81,7 +82,7 @@ export class DescribeCommand extends Command {
       return;
     }
 
-    const op = res.operations.find((o) => o.name === this.operation);
+    const op = findOperation(res, this.operation!);
     if (!op) {
       printOutput({
         error: {

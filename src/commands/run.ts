@@ -1,7 +1,8 @@
 import { Command, Option } from "clipanion";
-import { printOutput } from "../core/output.js";
-import { getPlugin, loadPluginsFromDir } from "../core/plugin-loader.js";
-import { join } from "node:path";
+import { printOutput } from "./output.js";
+import { parseFlags } from "../core/flag-parser.js";
+import { resolveCredentialsForPlugin } from "../core/credential-resolver.js";
+import { registry } from "../core/registry-instance.js";
 
 export class RunCommand extends Command {
   static override paths = [["run"]];
@@ -27,9 +28,7 @@ export class RunCommand extends Command {
   params = Option.Proxy();
 
   async execute(): Promise<void> {
-    await loadPluginsFromDir(join(import.meta.dir, "../../plugins"));
-
-    const plugin = getPlugin(this.service);
+    const plugin = registry.get(this.service);
     if (!plugin) {
       printOutput({
         error: {
@@ -43,12 +42,13 @@ export class RunCommand extends Command {
     }
 
     const params = parseFlags(this.params);
+    const credentials = await resolveCredentialsForPlugin(plugin.descriptor);
 
     const result = await plugin.execute(
       this.resource,
       this.operation,
       params,
-      {},
+      credentials,
     );
 
     if (!result.success) {
@@ -59,39 +59,4 @@ export class RunCommand extends Command {
 
     printOutput(result.data, { human: this.human });
   }
-}
-
-function parseFlags(args: string[]): Record<string, unknown> {
-  const params: Record<string, unknown> = {};
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
-    if (arg.startsWith("--")) {
-      const eqIndex = arg.indexOf("=");
-      if (eqIndex !== -1) {
-        const key = arg.slice(2, eqIndex);
-        const raw = arg.slice(eqIndex + 1);
-        params[key] = coerce(raw);
-      } else {
-        const key = arg.slice(2);
-        const next = args[i + 1];
-        if (next && !next.startsWith("--")) {
-          params[key] = coerce(next);
-          i++;
-        } else {
-          params[key] = true;
-        }
-      }
-    }
-    i++;
-  }
-  return params;
-}
-
-function coerce(value: string): string | number | boolean {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  const num = Number(value);
-  if (!isNaN(num) && value.trim() !== "") return num;
-  return value;
 }

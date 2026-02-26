@@ -15,7 +15,7 @@ export type ParameterType = "string" | "number" | "boolean" | "object" | "array"
 export type OutputFormat = "json" | "text" | "binary";
 
 /** Plugin types supported by the loader. */
-export type PluginType = "declarative" | "n8n-compat" | "native";
+export type PluginType = "declarative" | "adapted" | "native";
 
 /**
  * Describes a single parameter accepted by an operation.
@@ -87,21 +87,77 @@ export interface CredentialSpec {
 }
 
 /**
- * The result of executing an operation.
+ * Resolved credentials ready for injection into requests.
+ *
+ * Replaces the previous Record<string, string> + __field_ prefix convention
+ * with a properly typed structure that separates the primary secret from
+ * individual credential fields.
  */
-export interface Result<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-  metadata?: {
-    statusCode?: number;
-    headers?: Record<string, string>;
-    duration?: number;
-  };
+export interface ResolvedCredentials {
+  /** Credential type name (e.g. "githubApi"). */
+  typeName: string;
+  /** Primary secret value (token, API key, etc.) resolved from env or store. */
+  primarySecret?: string;
+  /** All resolved credential fields keyed by field name. */
+  fields: Readonly<Record<string, string>>;
+}
+
+/**
+ * Metadata attached to operation results.
+ */
+export interface ResultMetadata {
+  statusCode?: number;
+  headers?: Record<string, string>;
+  duration?: number;
+}
+
+/** Known error codes used across the system. */
+export type ErrorCode =
+  | "MISSING_PARAM"
+  | "UNKNOWN_RESOURCE"
+  | "UNKNOWN_OPERATION"
+  | "HTTP_ERROR"
+  | "REQUEST_FAILED"
+  | "EXECUTION_ERROR"
+  | "PLUGIN_NOT_FOUND"
+  | "RESOURCE_NOT_FOUND"
+  | "OPERATION_NOT_FOUND"
+  | "STARTUP_ERROR"
+  | "CREDENTIAL_ERROR"
+  | (string & {}); // Allow custom codes while providing autocomplete for known ones
+
+/**
+ * Structured error information.
+ */
+export interface ResultError {
+  code: ErrorCode;
+  message: string;
+  details?: unknown;
+}
+
+/**
+ * The result of executing an operation.
+ * Discriminated union — `success` narrows the type so that:
+ * - On success: `data` is guaranteed, `error` does not exist
+ * - On failure: `error` is guaranteed, `data` does not exist
+ */
+export type Result<T = unknown> =
+  | { success: true; data: T; metadata?: ResultMetadata }
+  | { success: false; error: ResultError; metadata?: ResultMetadata };
+
+/**
+ * Configuration describing how a credential type authenticates requests.
+ * Used by credential-injector, credential-introspector, and adapter layers.
+ *
+ * Values in headers, queryParams, body, and basicAuth may contain
+ * credential template expressions (e.g. "Bearer {{secret}}") that are
+ * resolved at injection time by the registered expression resolver.
+ */
+export interface CredentialAuthConfig {
+  headers?: Record<string, string>;
+  queryParams?: Record<string, string>;
+  body?: Record<string, string>;
+  basicAuth?: { username: string; password: string };
 }
 
 /**
@@ -118,6 +174,21 @@ export interface PluginDescriptor {
 }
 
 /**
+ * Find a resource by name in a plugin descriptor.
+ * Eliminates duplicated lookup logic across plugin-loader, adapter layers, and commands.
+ */
+export function findResource(descriptor: PluginDescriptor, name: string): Resource | undefined {
+  return descriptor.resources.find((r) => r.name === name);
+}
+
+/**
+ * Find an operation by name within a resource.
+ */
+export function findOperation(resource: Resource, name: string): Operation | undefined {
+  return resource.operations.find((o) => o.name === name);
+}
+
+/**
  * Interface that native plugins must implement.
  */
 export interface Plugin {
@@ -127,6 +198,6 @@ export interface Plugin {
     resource: string,
     operation: string,
     params: Record<string, unknown>,
-    credentials: Record<string, string>,
+    credentials: ResolvedCredentials[],
   ): Promise<Result>;
 }

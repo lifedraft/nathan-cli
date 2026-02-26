@@ -1,6 +1,6 @@
 import { Command, Option } from "clipanion";
-import { printOutput } from "../core/output.js";
-import { getAllPlugins } from "../core/plugin-loader.js";
+import { printOutput } from "./output.js";
+import { registry } from "../core/registry-instance.js";
 
 export class DiscoverCommand extends Command {
   static override paths = [["discover"]];
@@ -18,7 +18,7 @@ export class DiscoverCommand extends Command {
   });
 
   async execute(): Promise<void> {
-    const plugins = getAllPlugins();
+    const plugins = registry.getAll();
 
     const result = {
       plugins: plugins.map((p) => ({

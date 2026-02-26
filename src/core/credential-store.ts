@@ -8,11 +8,16 @@
  * Encryption format: [12B iv][16B tag][ciphertext]
  */
 
-import { randomBytes, createCipheriv, createDecipheriv, createHash } from "node:crypto";
+import { randomBytes, createCipheriv, createDecipheriv, scryptSync } from "node:crypto";
 import { readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { keychainGet, keychainSet, isKeychainAvailable } from "./keychain.js";
+
+/** Type predicate for Node.js filesystem errors with an error code. */
+function isErrnoException(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && "code" in err;
+}
 
 export interface StoredCredential {
   service: string;
@@ -22,9 +27,15 @@ export interface StoredCredential {
   updatedAt: string;
 }
 
+/** Input for storing a new credential. */
+export interface CredentialInput {
+  type: string;
+  fields: Record<string, string>;
+}
+
 export interface CredentialStore {
   /** Store a credential for a service. */
-  set(service: string, credential: Omit<StoredCredential, "service" | "createdAt" | "updatedAt">): Promise<void>;
+  set(service: string, credential: CredentialInput): Promise<void>;
   /** Retrieve a credential for a service. */
   get(service: string): Promise<StoredCredential | null>;
   /** List all stored service names. */
@@ -62,10 +73,11 @@ let cachedMasterKey: Buffer | null = null;
 async function resolveMasterKey(): Promise<Buffer> {
   if (cachedMasterKey) return cachedMasterKey;
 
-  // 1. Environment variable — accepts any string, derives a 32-byte key via SHA-256
+  // 1. Environment variable — accepts any string, derives a 32-byte key via scrypt
+  //    (resistant to brute-force on low-entropy passphrases, unlike bare SHA-256)
   const envKey = process.env.NATHAN_MASTER_KEY;
   if (envKey) {
-    const buf = createHash("sha256").update(envKey).digest();
+    const buf = scryptSync(envKey, "nathan-master-key-v1", KEY_LENGTH, { N: 16384, r: 8, p: 1 });
     cachedMasterKey = buf;
     return buf;
   }
@@ -89,17 +101,40 @@ async function resolveMasterKey(): Promise<Buffer> {
     return newKey;
   }
 
-  // 4. No keychain available and no env var
-  throw new Error(
-    "No master key available. Set NATHAN_MASTER_KEY env var (hex, 32 bytes):\n" +
-    "  export NATHAN_MASTER_KEY=$(openssl rand -hex 32)\n" +
-    "Or install a system keyring (macOS Keychain / Linux libsecret).",
-  );
+  // 4. File-based fallback (~/.nathan/master.key) — auto-generate if missing
+  const keyFilePath = join(homedir(), ".nathan", "master.key");
+  try {
+    const hex = await readFile(keyFilePath, "utf-8");
+    const buf = Buffer.from(hex.trim(), "hex");
+    if (buf.length === KEY_LENGTH) {
+      cachedMasterKey = buf;
+      return buf;
+    }
+    // File exists but has invalid content — do NOT silently overwrite
+    throw new Error(
+      `Master key file ${keyFilePath} exists but contains invalid data (expected ${KEY_LENGTH * 2} hex chars). ` +
+      "Delete it manually to auto-generate a new key (this will make existing credentials unreadable).",
+    );
+  } catch (err: unknown) {
+    // File not found — generate a new one
+    if (isErrnoException(err) && err.code === "ENOENT") {
+      const newKey = randomBytes(KEY_LENGTH);
+      await mkdir(dirname(keyFilePath), { recursive: true });
+      await writeFile(keyFilePath, newKey.toString("hex") + "\n", { mode: 0o600 });
+      cachedMasterKey = newKey;
+      return newKey;
+    }
+    // Re-throw all other errors (permission issues, corrupted file, etc.)
+    throw err;
+  }
 }
 
-/** Clear the cached master key (for testing). */
+/** Clear the cached master key (for testing). Zeros memory before nullifying. */
 export function clearMasterKeyCache(): void {
-  cachedMasterKey = null;
+  if (cachedMasterKey) {
+    cachedMasterKey.fill(0);
+    cachedMasterKey = null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +174,7 @@ async function readStore(storePath: string, key: Buffer): Promise<StoreFile> {
   try {
     raw = await readFile(storePath);
   } catch (err: unknown) {
-    if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+    if (isErrnoException(err) && err.code === "ENOENT") {
       return { version: 1, credentials: {} };
     }
     throw err;
@@ -163,68 +198,6 @@ async function writeStore(storePath: string, key: Buffer, store: StoreFile): Pro
   const tmpPath = `${storePath}.tmp`;
   await writeFile(tmpPath, encrypted, { mode: 0o600 });
   await rename(tmpPath, storePath);
-}
-
-// ---------------------------------------------------------------------------
-// n8n credential type introspection
-// ---------------------------------------------------------------------------
-
-export interface CredentialTypeField {
-  name: string;
-  displayName: string;
-  type: string;
-  default?: unknown;
-  isPassword: boolean;
-  required: boolean;
-  description?: string;
-}
-
-export interface CredentialTypeDefinition {
-  name: string;
-  displayName: string;
-  properties: CredentialTypeField[];
-  authenticate: unknown;
-  test: unknown;
-}
-
-/**
- * Dynamically load an n8n credential type definition.
- *
- * Example: "githubApi" → loads GithubApi.credentials.js → returns properties, authenticate, test.
- */
-export function loadCredentialTypeDefinition(credTypeName: string): CredentialTypeDefinition | null {
-  try {
-    const pascalName = credTypeName.charAt(0).toUpperCase() + credTypeName.slice(1);
-    const mod = require(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
-    const CredClass = mod[pascalName] ?? mod.default ?? Object.values(mod)[0];
-    if (!CredClass || typeof CredClass !== "function") return null;
-
-    const instance = new (CredClass as new () => Record<string, unknown>)();
-    const properties: CredentialTypeField[] = ((instance.properties ?? []) as Array<Record<string, unknown>>).map((p) => {
-      const isPassword = (p.typeOptions as Record<string, unknown> | undefined)?.password === true;
-      const hasEmptyDefault = p.default === "" || p.default === undefined;
-      return {
-        name: String(p.name ?? ""),
-        displayName: String(p.displayName ?? p.name ?? ""),
-        type: String(p.type ?? "string"),
-        default: p.default,
-        isPassword,
-        // Required if explicitly marked, or if it's a password field with no default
-        required: p.required === true || (isPassword && hasEmptyDefault),
-        description: p.description as string | undefined,
-      };
-    });
-
-    return {
-      name: String(instance.name ?? credTypeName),
-      displayName: String(instance.displayName ?? credTypeName),
-      properties,
-      authenticate: instance.authenticate ?? null,
-      test: instance.test ?? null,
-    };
-  } catch {
-    return null;
-  }
 }
 
 // ---------------------------------------------------------------------------

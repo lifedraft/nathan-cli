@@ -7,15 +7,17 @@
  */
 
 import { Command, Option } from "clipanion";
+import type { CommandClass } from "clipanion";
 import type { Plugin } from "../core/plugin-interface.js";
-import { printOutput } from "../core/output.js";
+import { printOutput } from "./output.js";
+import { parseFlags } from "../core/flag-parser.js";
 import { resolveCredentialsForPlugin } from "../core/credential-resolver.js";
 
 /**
  * Generate all dynamic Command classes for a loaded plugin.
  */
-export function createPluginCommands(plugin: Plugin): Array<typeof Command> {
-  const commands: Array<typeof Command> = [];
+export function createPluginCommands(plugin: Plugin): CommandClass[] {
+  const commands: CommandClass[] = [];
   const desc = plugin.descriptor;
 
   for (const resource of desc.resources) {
@@ -84,39 +86,4 @@ function buildExample(
     .join(" ");
 
   return `nathan ${service} ${resource} ${operation}${requiredParams ? " " + requiredParams : ""}`;
-}
-
-function parseFlags(args: string[]): Record<string, unknown> {
-  const params: Record<string, unknown> = {};
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
-    if (arg.startsWith("--")) {
-      const eqIndex = arg.indexOf("=");
-      if (eqIndex !== -1) {
-        const key = arg.slice(2, eqIndex);
-        const raw = arg.slice(eqIndex + 1);
-        params[key] = coerce(raw);
-      } else {
-        const key = arg.slice(2);
-        const next = args[i + 1];
-        if (next && !next.startsWith("--")) {
-          params[key] = coerce(next);
-          i++;
-        } else {
-          params[key] = true;
-        }
-      }
-    }
-    i++;
-  }
-  return params;
-}
-
-function coerce(value: string): string | number | boolean {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  const num = Number(value);
-  if (!isNaN(num) && value.trim() !== "") return num;
-  return value;
 }

@@ -321,143 +321,79 @@ function buildOperationDescription(
   return humanise(operationValue);
 }
 
-/**
- * Detect whether an HTTP method is considered idempotent.
- */
-function isIdempotent(method: HttpMethod): boolean {
-  return method === "GET" || method === "PUT" || method === "DELETE" || method === "HEAD" || method === "OPTIONS";
-}
-
 // ---------------------------------------------------------------------------
-// Public API
+// Branch extractors (file-private)
 // ---------------------------------------------------------------------------
 
 /**
- * Convert an n8n INodeTypeDescription into a nathan PluginDescriptor.
- *
- * The conversion handles two shapes of n8n nodes:
- *
- * 1. **Resource + operation nodes** — the most common pattern.  The
- *    description contains a property named `resource` (type `options`)
- *    and a property named `operation` (type `options`).  Every
- *    resource+operation combination becomes a nathan Resource+Operation.
- *
- * 2. **Single-purpose nodes** — no resource/operation properties.  All
- *    non-meta properties are collected into a single resource with a
- *    single "execute" operation.
+ * Adapt a node that uses the resource + operation pattern — the most common
+ * shape.  Each resource+operation combination becomes a nathan
+ * Resource+Operation.
  */
-export function adaptNodeTypeDescription(
+function adaptResourceOperationNode(
   desc: INodeTypeDescription,
-): PluginDescriptor {
-  const resourceProp = desc.properties.find(
-    (p) => p.name === "resource" && p.type === "options",
-  );
-  const operationProp = desc.properties.find(
-    (p) => p.name === "operation" && p.type === "options",
-  );
-
+  resourceProp: INodeProperties,
+  allOperationProps: INodeProperties[],
+  allProperties: INodeProperties[],
+): Resource[] {
   const resources: Resource[] = [];
 
-  // Collect ALL operation properties (there can be multiple, each scoped
-  // to different resources via displayOptions.show.resource).
-  const allOperationProps = desc.properties.filter(
-    (p) => p.name === "operation" && p.type === "options",
-  );
+  for (const resOpt of resourceProp.options!) {
+    if (!isPropertyOption(resOpt)) continue;
 
-  if (resourceProp && resourceProp.options && resourceProp.options.length > 0) {
-    // ---- Resource + operation pattern ----
-    for (const resOpt of resourceProp.options) {
-      if (!isPropertyOption(resOpt)) continue;
+    const resourceValue = String(resOpt.value);
+    const resourceDisplayName = resOpt.name;
 
-      const resourceValue = String(resOpt.value);
-      const resourceDisplayName = resOpt.name;
+    // Find the operation property(ies) that apply to this resource.
+    // n8n nodes often have one operation prop per resource, each with
+    // displayOptions.show.resource scoped to that resource.
+    const matchingOpProps = allOperationProps.filter((opProp) => {
+      if (!opProp.displayOptions?.show?.resource) return true;
+      return opProp.displayOptions.show.resource.includes(resourceValue);
+    });
 
-      // Find the operation property(ies) that apply to this resource.
-      // n8n nodes often have one operation prop per resource, each with
-      // displayOptions.show.resource scoped to that resource.
-      const matchingOpProps = allOperationProps.filter((opProp) => {
-        if (!opProp.displayOptions?.show?.resource) return true;
-        return opProp.displayOptions.show.resource.includes(resourceValue);
-      });
+    const operations: Operation[] = [];
 
-      const operations: Operation[] = [];
+    for (const opProp of matchingOpProps) {
+      if (!opProp.options) continue;
 
-      for (const opProp of matchingOpProps) {
-        if (!opProp.options) continue;
+      for (const opOpt of opProp.options) {
+        if (!isPropertyOption(opOpt)) continue;
 
-        for (const opOpt of opProp.options) {
-          if (!isPropertyOption(opOpt)) continue;
+        const operationValue = String(opOpt.value);
+        const method = inferHttpMethod(opProp, operationValue, desc);
+        const path = inferPath(opProp, operationValue, desc);
+        const params = collectScopedParameters(allProperties, resourceValue, operationValue);
 
-          const operationValue = String(opOpt.value);
-          const method = inferHttpMethod(opProp, operationValue, desc);
-          const path = inferPath(opProp, operationValue, desc);
-          const params = collectScopedParameters(desc.properties, resourceValue, operationValue);
-
-          operations.push({
-            name: operationValue,
-            displayName: humanise(operationValue),
-            description: buildOperationDescription(opProp, operationValue),
-            method,
-            path,
-            parameters: params,
-            output: {
-              format: "json",
-              description: `Result of ${humanise(operationValue)} on ${resourceDisplayName}`,
-            },
-            requiresAuth: (desc.credentials?.length ?? 0) > 0,
-          });
-        }
-      }
-
-      if (matchingOpProps.length === 0) {
-        // Resource exists but no operation property — single "execute".
-        const params = collectScopedParameters(desc.properties, resourceValue, undefined);
         operations.push({
-          name: "execute",
-          displayName: "Execute",
-          description: `Execute action on ${resourceDisplayName}`,
-          method: desc.requestDefaults?.method ?? "POST",
-          path: desc.requestDefaults?.url ?? "/",
+          name: operationValue,
+          displayName: humanise(operationValue),
+          description: buildOperationDescription(opProp, operationValue),
+          method,
+          path,
           parameters: params,
           output: {
             format: "json",
-            description: `Result of executing ${resourceDisplayName}`,
+            description: `Result of ${humanise(operationValue)} on ${resourceDisplayName}`,
           },
           requiresAuth: (desc.credentials?.length ?? 0) > 0,
         });
       }
-
-      if (operations.length > 0) {
-        resources.push({
-          name: resourceValue,
-          displayName: resourceDisplayName,
-          description: resOpt.description ?? humanise(resourceValue),
-          operations,
-        });
-      }
     }
-  } else if (operationProp && operationProp.options && operationProp.options.length > 0) {
-    // ---- Operation-only pattern (no resource) ----
-    // All operations go under a single synthetic resource.
-    const operations: Operation[] = [];
 
-    for (const opOpt of operationProp.options) {
-      if (!isPropertyOption(opOpt)) continue;
-      const operationValue = String(opOpt.value);
-      const method = inferHttpMethod(operationProp, operationValue, desc);
-      const path = inferPath(operationProp, operationValue, desc);
-      const params = collectScopedParameters(desc.properties, undefined, operationValue);
-
+    if (matchingOpProps.length === 0) {
+      // Resource exists but no operation property — single "execute".
+      const params = collectScopedParameters(allProperties, resourceValue, undefined);
       operations.push({
-        name: operationValue,
-        displayName: humanise(operationValue),
-        description: buildOperationDescription(operationProp, operationValue),
-        method,
-        path,
+        name: "execute",
+        displayName: "Execute",
+        description: `Execute action on ${resourceDisplayName}`,
+        method: desc.requestDefaults?.method ?? "POST",
+        path: desc.requestDefaults?.url ?? "/",
         parameters: params,
         output: {
           format: "json",
-          description: `Result of ${humanise(operationValue)}`,
+          description: `Result of executing ${resourceDisplayName}`,
         },
         requiresAuth: (desc.credentials?.length ?? 0) > 0,
       });
@@ -465,18 +401,78 @@ export function adaptNodeTypeDescription(
 
     if (operations.length > 0) {
       resources.push({
+        name: resourceValue,
+        displayName: resourceDisplayName,
+        description: resOpt.description ?? humanise(resourceValue),
+        operations,
+      });
+    }
+  }
+
+  return resources;
+}
+
+/**
+ * Adapt a node that has an operation property but no resource property.
+ * All operations go under a single synthetic "default" resource.
+ */
+function adaptOperationOnlyNode(
+  desc: INodeTypeDescription,
+  operationProp: INodeProperties,
+  allProperties: INodeProperties[],
+): Resource[] {
+  const operations: Operation[] = [];
+
+  for (const opOpt of operationProp.options!) {
+    if (!isPropertyOption(opOpt)) continue;
+    const operationValue = String(opOpt.value);
+    const method = inferHttpMethod(operationProp, operationValue, desc);
+    const path = inferPath(operationProp, operationValue, desc);
+    const params = collectScopedParameters(allProperties, undefined, operationValue);
+
+    operations.push({
+      name: operationValue,
+      displayName: humanise(operationValue),
+      description: buildOperationDescription(operationProp, operationValue),
+      method,
+      path,
+      parameters: params,
+      output: {
+        format: "json",
+        description: `Result of ${humanise(operationValue)}`,
+      },
+      requiresAuth: (desc.credentials?.length ?? 0) > 0,
+    });
+  }
+
+  if (operations.length > 0) {
+    return [
+      {
         name: "default",
         displayName: desc.displayName,
         description: desc.description,
         operations,
-      });
-    }
-  } else {
-    // ---- Single-purpose node (no resource, no operation) ----
-    const params = collectScopedParameters(desc.properties, undefined, undefined);
-    const method: HttpMethod = desc.requestDefaults?.method ?? "POST";
+      },
+    ];
+  }
 
-    resources.push({
+  return [];
+}
+
+/**
+ * Adapt a single-purpose node (no resource, no operation properties).
+ * All non-meta properties are collected into one resource with one
+ * "execute" operation.
+ */
+function adaptSinglePurposeNode(
+  desc: INodeTypeDescription,
+  allProperties: INodeProperties[],
+): Resource[] {
+  const params = collectScopedParameters(allProperties, undefined, undefined);
+  const method: HttpMethod = desc.requestDefaults?.method ?? "POST";
+
+  return [
+    {
       name: "default",
       displayName: desc.displayName,
       description: desc.description,
@@ -495,7 +491,51 @@ export function adaptNodeTypeDescription(
           requiresAuth: (desc.credentials?.length ?? 0) > 0,
         },
       ],
-    });
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Convert an n8n INodeTypeDescription into a nathan PluginDescriptor.
+ *
+ * The conversion handles three shapes of n8n nodes:
+ *
+ * 1. **Resource + operation nodes** — the most common pattern.  The
+ *    description contains a property named `resource` (type `options`)
+ *    and a property named `operation` (type `options`).  Every
+ *    resource+operation combination becomes a nathan Resource+Operation.
+ *
+ * 2. **Operation-only nodes** — an `operation` property exists but no
+ *    `resource`.  All operations go under a single synthetic resource.
+ *
+ * 3. **Single-purpose nodes** — no resource/operation properties.  All
+ *    non-meta properties are collected into a single resource with a
+ *    single "execute" operation.
+ */
+export function adaptNodeTypeDescription(
+  desc: INodeTypeDescription,
+): PluginDescriptor {
+  const resourceProp = desc.properties.find(
+    (p) => p.name === "resource" && p.type === "options",
+  );
+  const operationProp = desc.properties.find(
+    (p) => p.name === "operation" && p.type === "options",
+  );
+  const allOperationProps = desc.properties.filter(
+    (p) => p.name === "operation" && p.type === "options",
+  );
+
+  let resources: Resource[];
+  if (resourceProp && resourceProp.options && resourceProp.options.length > 0) {
+    resources = adaptResourceOperationNode(desc, resourceProp, allOperationProps, desc.properties);
+  } else if (operationProp && operationProp.options && operationProp.options.length > 0) {
+    resources = adaptOperationOnlyNode(desc, operationProp, desc.properties);
+  } else {
+    resources = adaptSinglePurposeNode(desc, desc.properties);
   }
 
   // ---- Credentials ----
@@ -511,17 +551,9 @@ export function adaptNodeTypeDescription(
     displayName: desc.displayName,
     description: desc.description,
     version: resolveVersion(desc),
-    type: "n8n-compat",
+    type: "adapted",
     credentials,
     resources,
   };
 }
 
-/**
- * Convenience: adapt an INodeType (which wraps a description).
- */
-export function adaptNodeType(
-  nodeType: { description: INodeTypeDescription },
-): PluginDescriptor {
-  return adaptNodeTypeDescription(nodeType.description);
-}

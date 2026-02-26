@@ -6,84 +6,66 @@
  * 1. Environment variables (NATHAN_<SERVICE>_TOKEN, NATHAN_<SERVICE>_<FIELD>)
  * 2. Credential store (encrypted on-disk storage)
  *
- * For n8n nodes, credentials are keyed by credential type name (e.g. "githubApi")
- * and the node expects an object with specific fields (e.g. { accessToken, server }).
- *
- * Env var mapping:
- *   NATHAN_GITHUB_TOKEN     -> githubApi.accessToken + githubApi.token
- *   NATHAN_GITHUB_SERVER    -> githubApi.server
- *   GITHUB_TOKEN            -> githubApi.accessToken (fallback)
- *   NATHAN_<SERVICE>_<FIELD> -> <credType>.<field>
+ * Returns ResolvedCredentials[] — one entry per credential type declared by the plugin.
  */
 
-import type { PluginDescriptor } from "./plugin-interface.js";
+import type { PluginDescriptor, ResolvedCredentials } from "./plugin-interface.js";
+import type { CredentialStore } from "./credential-store.js";
 import { createCredentialStore } from "./credential-store.js";
 
 /**
  * Resolve credentials for a plugin from environment variables and the
- * credential store. Returns a flat Record<string, string> that the
- * plugin's execute() can pass to the n8n shim or HTTP executor.
+ * credential store. Returns a ResolvedCredentials[] array — one entry per
+ * credential type declared by the plugin.
  *
- * For n8n-compat plugins, this builds the credential objects that
- * getCredentials() returns (keyed by credential type name).
+ * Accepts an optional `store` parameter for dependency injection (testing,
+ * alternative backends). Falls back to `createCredentialStore()` if not provided.
  */
 export async function resolveCredentialsForPlugin(
   descriptor: PluginDescriptor,
-): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
+  options?: { store?: CredentialStore; env?: Record<string, string | undefined> },
+): Promise<ResolvedCredentials[]> {
+  if (descriptor.credentials.length === 0) return [];
+
+  const env = options?.env ?? process.env;
   const serviceName = descriptor.name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
 
   // --- 1. Environment variables (always win) ---
 
   const token =
-    process.env[`NATHAN_${serviceName}_TOKEN`] ??
-    process.env[`${serviceName}_TOKEN`] ??
-    process.env[`NATHAN_${serviceName}_API_KEY`] ??
-    process.env[`${serviceName}_API_KEY`];
+    env[`NATHAN_${serviceName}_TOKEN`] ??
+    env[`${serviceName}_TOKEN`] ??
+    env[`NATHAN_${serviceName}_API_KEY`] ??
+    env[`${serviceName}_API_KEY`];
 
-  if (token) {
-    for (const cred of descriptor.credentials) {
-      result[cred.name] = token;
-    }
-  }
-
-  // Service-specific field overrides from env
-  for (const [key, value] of Object.entries(process.env)) {
+  // Collect service-specific field overrides from env
+  const envFields: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
     if (!value) continue;
     const prefix = `NATHAN_${serviceName}_`;
     if (key.startsWith(prefix) && key !== `${prefix}TOKEN` && key !== `${prefix}API_KEY`) {
       const field = key.slice(prefix.length).toLowerCase();
-      result[`__field_${field}`] = value;
+      envFields[field] = value;
     }
   }
 
-  // If env vars provided credentials, return early (env always wins)
   if (token) {
-    return result;
+    return descriptor.credentials.map((cred) => ({
+      typeName: cred.name,
+      primarySecret: token,
+      fields: { ...envFields },
+    }));
   }
 
   // --- 2. Credential store fallback ---
 
   try {
-    const store = createCredentialStore();
-    const stored = await store.get(descriptor.name);
+    const credStore = options?.store ?? createCredentialStore();
+    const stored = await credStore.get(descriptor.name);
     if (stored) {
-      // Map stored fields to the flat format expected by buildN8nCredentials.
-      // The credential type name maps to the "token" value (the primary secret field).
-      // Other fields become __field_ prefixed entries.
-      for (const cred of descriptor.credentials) {
-        if (cred.name === stored.type) {
-          // Find the primary secret field (password-type field)
-          // and map it to the credential type key
-          for (const [fieldName, fieldValue] of Object.entries(stored.fields)) {
-            // Set all field values as __field_ entries
-            if (!result[`__field_${fieldName}`]) {
-              result[`__field_${fieldName}`] = fieldValue;
-            }
-          }
-
-          // Also set the credential type name to the token/secret value
-          // Try common secret field names
+      return descriptor.credentials
+        .filter((cred) => cred.name === stored.type)
+        .map((cred) => {
           const secretValue =
             stored.fields.accessToken ??
             stored.fields.token ??
@@ -91,52 +73,28 @@ export async function resolveCredentialsForPlugin(
             stored.fields.password ??
             Object.values(stored.fields)[0];
 
-          if (secretValue) {
-            result[cred.name] = secretValue;
-          }
-        }
-      }
+          // Merge env fields over store fields (env always wins)
+          const mergedFields = { ...stored.fields, ...envFields };
+
+          return {
+            typeName: cred.name,
+            primarySecret: secretValue,
+            fields: mergedFields,
+          };
+        });
     }
-  } catch {
-    // Credential store unavailable (no master key, etc.) — continue with empty
+  } catch (err) {
+    // Log credential store failures so they are not completely invisible
+    if (env.NATHAN_DEBUG) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[nathan] Credential store error: ${msg}`);
+    }
   }
 
-  return result;
-}
-
-/**
- * Build the n8n credential objects from resolved credentials.
- * n8n nodes call getCredentials('githubApi') and expect an object like
- * { accessToken: "...", server: "https://api.github.com" }.
- *
- * This function builds those objects from the flat credential map.
- */
-export function buildN8nCredentials(
-  flatCredentials: Record<string, string>,
-  credentialTypes: string[],
-): Record<string, Record<string, unknown>> {
-  const result: Record<string, Record<string, unknown>> = {};
-
-  for (const credType of credentialTypes) {
-    const token = flatCredentials[credType];
-    if (!token) continue;
-
-    // Build the credential object with common field names
-    const cred: Record<string, unknown> = {
-      accessToken: token,
-      token: token,
-      apiKey: token,
-    };
-
-    // Add any field-specific overrides
-    for (const [key, value] of Object.entries(flatCredentials)) {
-      if (key.startsWith("__field_")) {
-        cred[key.slice(8)] = value; // strip __field_ prefix
-      }
-    }
-
-    result[credType] = cred;
-  }
-
-  return result;
+  // Return empty credentials (no secret, no fields) for each declared type
+  return descriptor.credentials.map((cred) => ({
+    typeName: cred.name,
+    primarySecret: undefined,
+    fields: { ...envFields },
+  }));
 }

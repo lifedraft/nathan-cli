@@ -6,7 +6,7 @@
 
 import { Command, Option } from "clipanion";
 import { createCredentialStore } from "../../core/credential-store.js";
-import { printOutput } from "../../core/output.js";
+import { printOutput, printError } from "../output.js";
 
 export class AuthListCommand extends Command {
   static override paths = [["auth", "list"]];
@@ -23,19 +23,27 @@ export class AuthListCommand extends Command {
   });
 
   async execute(): Promise<void> {
-    const store = createCredentialStore();
-    const credentials = await store.list();
+    try {
+      const store = createCredentialStore();
+      const credentials = await store.list();
 
-    const entries = credentials.map((cred) => ({
-      service: cred.service,
-      type: cred.type,
-      fields: Object.keys(cred.fields),
-      updatedAt: cred.updatedAt,
-    }));
+      const entries = credentials.map((cred) => ({
+        service: cred.service,
+        type: cred.type,
+        fields: Object.keys(cred.fields),
+        updatedAt: cred.updatedAt,
+      }));
 
-    printOutput(
-      { status: "ok", credentials: entries },
-      { human: this.human },
-    );
+      printOutput(
+        { status: "ok", credentials: entries },
+        { human: this.human },
+      );
+    } catch (err) {
+      printError(
+        `Failed to read credential store: ${err instanceof Error ? err.message : String(err)}`,
+        { human: this.human },
+      );
+      process.exitCode = 1;
+    }
   }
 }
