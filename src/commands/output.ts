@@ -12,6 +12,8 @@ export interface OutputOptions {
   human?: boolean;
   /** Pretty-print JSON with indentation. Defaults to true. */
   pretty?: boolean;
+  /** Truncate array results to this many items. */
+  limit?: number;
 }
 
 /**
@@ -28,8 +30,21 @@ function formatOutput(data: unknown, options: OutputOptions = {}): string {
  * Print formatted output to stdout.
  */
 export function printOutput(data: unknown, options: OutputOptions = {}): void {
-  const formatted = formatOutput(data, options);
+  const output = applyLimit(data, options.limit);
+  const formatted = formatOutput(output, options);
   console.log(formatted);
+}
+
+/**
+ * If limit is set and data is an array larger than limit, wrap with _meta.
+ */
+function applyLimit(data: unknown, limit?: number): unknown {
+  if (limit === undefined || !Array.isArray(data)) return data;
+  if (data.length <= limit) return data;
+  return {
+    items: data.slice(0, limit),
+    _meta: { total: data.length, returned: limit, truncated: true },
+  };
 }
 
 /**
@@ -63,6 +78,24 @@ function formatHuman(data: unknown): string {
 }
 
 /**
+ * Summarise a value for human display.
+ * For nested objects, tries common identifier fields before falling back to
+ * a field-count summary — avoids dumping raw JSON blobs in table cells.
+ */
+function summarizeValue(value: unknown): string {
+  if (value === null || value === undefined) return chalk.dim("—");
+  if (typeof value !== "object") return String(value);
+  if (Array.isArray(value)) return chalk.dim(`[${value.length} items]`);
+
+  const obj = value as Record<string, unknown>;
+  for (const key of ["login", "name", "full_name", "title", "label", "slug", "id", "email"]) {
+    if (key in obj && obj[key] != null && obj[key] !== false && obj[key] !== "") return String(obj[key]);
+  }
+  const keys = Object.keys(obj);
+  return chalk.dim(`{${keys.length} fields}`);
+}
+
+/**
  * Format an array of objects as a table.
  */
 function formatArray(items: unknown[]): string {
@@ -84,7 +117,7 @@ function formatArray(items: unknown[]): string {
   for (const item of items) {
     const row = keys.map((k) => {
       const val = (item as Record<string, unknown>)[k];
-      return val === null || val === undefined ? chalk.dim("—") : String(val);
+      return summarizeValue(val);
     });
     table.push(row);
   }
@@ -97,17 +130,13 @@ function formatArray(items: unknown[]): string {
  */
 function formatObject(obj: Record<string, unknown>): string {
   const lines: string[] = [];
-  const maxKeyLen = Math.max(...Object.keys(obj).map((k) => k.length));
+  const objKeys = Object.keys(obj);
+  if (objKeys.length === 0) return chalk.dim("(empty object)");
+  const maxKeyLen = Math.max(...objKeys.map((k) => k.length));
 
   for (const [key, value] of Object.entries(obj)) {
     const paddedKey = key.padEnd(maxKeyLen);
-    const formattedValue =
-      value === null || value === undefined
-        ? chalk.dim("—")
-        : typeof value === "object"
-          ? JSON.stringify(value)
-          : String(value);
-    lines.push(`  ${chalk.cyan(paddedKey)}  ${formattedValue}`);
+    lines.push(`  ${chalk.cyan(paddedKey)}  ${summarizeValue(value)}`);
   }
 
   return lines.join("\n");

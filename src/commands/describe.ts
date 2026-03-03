@@ -2,6 +2,7 @@ import { Command, Option } from "clipanion";
 import { printOutput } from "./output.js";
 import { registry } from "../core/registry-instance.js";
 import { findResource, findOperation } from "../core/plugin-interface.js";
+import { getExpectedEnvVarNames, hasConfiguredCredentials } from "../core/credential-resolver.js";
 
 export class DescribeCommand extends Command {
   static override paths = [["describe"]];
@@ -38,12 +39,17 @@ export class DescribeCommand extends Command {
     }
 
     if (!this.resource) {
+      const authRequired = plugin.descriptor.credentials.length > 0;
       printOutput({
         name: plugin.descriptor.name,
         displayName: plugin.descriptor.displayName,
         description: plugin.descriptor.description,
         version: plugin.descriptor.version,
-        authenticated: plugin.descriptor.credentials.length > 0,
+        auth: {
+          required: authRequired,
+          configured: authRequired ? hasConfiguredCredentials(plugin.descriptor) : false,
+          env_vars: authRequired ? getExpectedEnvVarNames(plugin.descriptor.name) : [],
+        },
         resources: plugin.descriptor.resources.map((r) => ({
           name: r.name,
           displayName: r.displayName,
@@ -77,6 +83,13 @@ export class DescribeCommand extends Command {
           displayName: o.displayName,
           description: o.description,
           method: o.method,
+          parameters: o.parameters.map((p) => ({
+            name: p.name,
+            type: p.type,
+            required: p.required,
+            description: p.description,
+            ...(p.default !== undefined ? { default: p.default } : {}),
+          })),
         })),
       }, { human: this.human });
       return;
@@ -95,6 +108,7 @@ export class DescribeCommand extends Command {
       return;
     }
 
+    const authRequired = plugin.descriptor.credentials.length > 0;
     printOutput({
       command: `nathan ${this.service} ${this.resource} ${this.operation}`,
       description: op.description,
@@ -108,8 +122,9 @@ export class DescribeCommand extends Command {
         location: p.location,
       })),
       auth: {
-        required: plugin.descriptor.credentials.length > 0,
-        configured: false,
+        required: authRequired,
+        configured: authRequired ? hasConfiguredCredentials(plugin.descriptor) : false,
+        env_vars: authRequired ? getExpectedEnvVarNames(plugin.descriptor.name) : [],
       },
     }, { human: this.human });
   }

@@ -52,6 +52,18 @@ export function parseFlags(args: string[]): Record<string, FlagValue> {
 }
 
 /**
+ * Extract and validate the --limit flag from parsed params.
+ * Returns a positive integer or undefined. Deletes the key from params.
+ */
+export function extractLimit(params: Record<string, FlagValue>): number | undefined {
+  const raw = params.limit;
+  delete params.limit;
+  if (raw === undefined || raw === true) return undefined;
+  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+}
+
+/**
  * Parse flags as string values only (no coercion).
  * Used by auth commands where all values should remain strings.
  */

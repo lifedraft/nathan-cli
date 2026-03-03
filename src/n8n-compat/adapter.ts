@@ -133,10 +133,34 @@ function matchesDisplayOptions(
 }
 
 /**
- * Determine whether a property is the resource or operation selector itself.
+ * Internal/meta parameter names that should be excluded from CLI-facing params.
+ */
+const INTERNAL_PARAMS = new Set(["resource", "operation", "authentication"]);
+
+/**
+ * Determine whether a property is a meta/internal selector that should be
+ * excluded from CLI-facing parameters.
  */
 function isMetaProperty(prop: INodeProperties): boolean {
-  return prop.name === "resource" || prop.name === "operation";
+  return INTERNAL_PARAMS.has(prop.name) || prop.type === "notice";
+}
+
+/**
+ * Normalise n8n widget defaults like `{ mode: "list", value: "" }` to a plain
+ * value.  Returns `undefined` when the inner value is empty so the parameter
+ * won't appear as having a default.
+ */
+const N8N_WIDGET_MODES = new Set(["list", "manual", "id", "url"]);
+
+function normalizeDefault(val: unknown): unknown {
+  if (val && typeof val === "object" && !Array.isArray(val)) {
+    const obj = val as Record<string, unknown>;
+    if ("mode" in obj && "value" in obj && N8N_WIDGET_MODES.has(String(obj.mode))) {
+      const v = obj.value;
+      return v === "" || v === null ? undefined : v;
+    }
+  }
+  return val;
 }
 
 /**
@@ -225,7 +249,7 @@ function toNathanParameter(prop: INodeProperties): Parameter {
     description: prop.description ?? "",
     type: mapParameterType(prop.type),
     required: prop.required ?? false,
-    default: prop.default,
+    default: normalizeDefault(prop.default),
     location: prop.routing?.send?.type === "query" ? "query" : "body",
     options: extractOptions(prop),
   };

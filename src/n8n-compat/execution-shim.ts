@@ -278,6 +278,8 @@ function createParameterAccess(
 
 function createHttpHelpers(
   credentials: Record<string, Record<string, unknown>>,
+  params?: Record<string, unknown>,
+  operationMeta?: OperationMeta,
 ): IExecuteFunctions["helpers"] {
   return {
     async request(opts: IRequestOptions): Promise<unknown> {
@@ -295,13 +297,30 @@ function createHttpHelpers(
       try {
         const parsed = new URL(rawUrl);
         if (parsed.pathname === "" || parsed.pathname === "/") {
+          // Use operationMeta to give a more specific error
+          if (operationMeta) {
+            const providedKeys = params
+              ? Object.keys(params).filter(
+                  (k) => k !== "resource" && k !== "operation" && params[k] !== undefined,
+                )
+              : [];
+            const missingRequired = operationMeta.requiredParams.filter(
+              (p) => !providedKeys.includes(p),
+            );
+            if (missingRequired.length > 0) {
+              throw new Error(
+                `Missing required parameters: ${missingRequired.join(", ")}.` +
+                ` Run 'nathan describe <service> ${operationMeta.resource} ${operationMeta.operation}' to see parameter details.`,
+              );
+            }
+          }
           throw new Error(
-            `Operation not implemented: the n8n node did not set an API endpoint. ` +
-            `URL resolved to base: ${rawUrl}`,
+            `This operation may not be supported by the underlying n8n node.` +
+            ` Try a different operation or run 'nathan describe <service> <resource>' to see available operations.`,
           );
         }
       } catch (e) {
-        if (e instanceof Error && e.message.startsWith("Operation not implemented")) throw e;
+        if (e instanceof Error && (e.message.startsWith("Missing required") || e.message.startsWith("This operation"))) throw e;
       }
 
       const spec = requestOptionsToFetchSpec(opts);
@@ -406,10 +425,17 @@ interface NodePropertyDef {
   default?: unknown;
 }
 
+export interface OperationMeta {
+  resource: string;
+  operation: string;
+  requiredParams: string[];
+}
+
 export interface ExecutionContextOptions {
   params: Record<string, unknown>;
   credentials: Record<string, Record<string, unknown>>;
   nodeProperties?: NodePropertyDef[];
+  operationMeta?: OperationMeta;
   timezone?: string;
   continueOnFail?: boolean;
 }
@@ -420,7 +446,7 @@ export interface ExecutionContextOptions {
 export function createExecutionContext(
   options: ExecutionContextOptions,
 ): IExecuteFunctions {
-  const { params, credentials, nodeProperties, timezone = "UTC", continueOnFail: shouldContinueOnFail = false } = options;
+  const { params, credentials, nodeProperties, operationMeta, timezone = "UTC", continueOnFail: shouldContinueOnFail = false } = options;
 
   // Build property defaults lookup
   const propDefaults = new Map<string, unknown>();
@@ -431,7 +457,7 @@ export function createExecutionContext(
   }
 
   const inputData: INodeExecutionData[] = [{ json: { ...params } }];
-  const helpers = createHttpHelpers(credentials);
+  const helpers = createHttpHelpers(credentials, params, operationMeta);
 
   // Wire up binary helpers that need inputData closure
   helpers.getBinaryDataBuffer = async (itemIndex: number, propertyName: string): Promise<Buffer> => {

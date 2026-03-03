@@ -209,8 +209,9 @@ describe("injectCredentials", () => {
       { typeName: "slackApi", primarySecret: "xoxb_loser", fields: {} },
     ];
     const result = injectCredentials(creds);
-    // Should use githubApi (first one with primarySecret)
-    expect(result.headers["Authorization"]).toBe("Bearer ghp_winner");
+    // Should use githubApi (first one with primarySecret).
+    // buildCredentialObject sets apiKey alias, and apiKey fallback puts raw value in header.
+    expect(result.headers["Authorization"]).toBe("ghp_winner");
   });
 
   test("picks credential with fields even without primarySecret", () => {

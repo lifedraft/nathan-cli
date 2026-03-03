@@ -47,10 +47,19 @@ function loadN8nNode(nodeInstance: INodeType): Plugin {
         try {
           const credMap = buildN8nCredentials(credentials);
 
+          // Look up operation metadata for better error messages
+          const res = findResource(descriptor, resource);
+          const op = res ? findOperation(res, operation) : undefined;
+
           const ctx = createExecutionContext({
             params: { resource, operation, ...params },
             credentials: credMap,
             nodeProperties: nodeInstance.description.properties,
+            operationMeta: op ? {
+              resource,
+              operation,
+              requiredParams: op.parameters.filter((p) => p.required).map((p) => p.name),
+            } : undefined,
           });
 
           const result = await nodeInstance.execute.call(ctx);

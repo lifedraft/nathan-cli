@@ -14,8 +14,6 @@ export interface NathanConfig {
   debug: boolean;
   /** Allow sending credentials over insecure HTTP (bypasses HTTPS enforcement). */
   allowHttp: boolean;
-  /** Master key for credential encryption (if provided via env). */
-  masterKey?: string;
   /** Directories to search for plugins (in order). */
   pluginDirs: string[];
 }
@@ -29,7 +27,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   return {
     debug: !!env.NATHAN_DEBUG,
     allowHttp: !!env.NATHAN_ALLOW_HTTP,
-    masterKey: env.NATHAN_MASTER_KEY,
     pluginDirs: [
       env.NATHAN_PLUGINS,
       join(homedir(), ".nathan", "plugins"),

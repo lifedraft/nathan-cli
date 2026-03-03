@@ -1,36 +1,84 @@
 /**
- * Silent credential resolution chain.
+ * Silent credential resolution from environment variables.
  *
  * At runtime (agent mode), credentials must resolve without any interaction.
- * Resolution order:
- * 1. Environment variables (NATHAN_<SERVICE>_TOKEN, NATHAN_<SERVICE>_<FIELD>)
- * 2. Credential store (encrypted on-disk storage)
+ * Resolution: environment variables (NATHAN_<SERVICE>_TOKEN, NATHAN_<SERVICE>_<FIELD>)
  *
  * Returns ResolvedCredentials[] — one entry per credential type declared by the plugin.
  */
 
 import type { PluginDescriptor, ResolvedCredentials } from "./plugin-interface.js";
-import type { CredentialStore } from "./credential-store.js";
-import { createCredentialStore } from "./credential-store.js";
 
 /**
- * Resolve credentials for a plugin from environment variables and the
- * credential store. Returns a ResolvedCredentials[] array — one entry per
- * credential type declared by the plugin.
- *
- * Accepts an optional `store` parameter for dependency injection (testing,
- * alternative backends). Falls back to `createCredentialStore()` if not provided.
+ * Normalise a service name to the upper-case env var prefix form.
+ */
+function toEnvPrefix(serviceName: string): string {
+  return serviceName.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+}
+
+/**
+ * Return the 4 env var names that are probed for a service's primary secret.
+ */
+export function getExpectedEnvVarNames(serviceName: string): string[] {
+  const s = toEnvPrefix(serviceName);
+  return [
+    `NATHAN_${s}_TOKEN`,
+    `${s}_TOKEN`,
+    `NATHAN_${s}_API_KEY`,
+    `${s}_API_KEY`,
+  ];
+}
+
+/**
+ * Check whether any of the expected credential env vars are set for the plugin.
+ */
+export function hasConfiguredCredentials(
+  descriptor: PluginDescriptor,
+  env?: Record<string, string | undefined>,
+): boolean {
+  if (descriptor.credentials.length === 0) return false;
+  const e = env ?? process.env;
+  return getExpectedEnvVarNames(descriptor.name).some((k) => !!e[k]);
+}
+
+/**
+ * Fail-fast check: if a plugin requires credentials but none are configured,
+ * return a structured error result. Otherwise return null.
+ */
+export function checkCredentialsConfigured(
+  descriptor: PluginDescriptor,
+  resolved: ResolvedCredentials[],
+): { error: { code: string; message: string; env_vars: string[] } } | null {
+  if (descriptor.credentials.length === 0) return null;
+  const allMissing = resolved.every((c) => c.primarySecret === undefined);
+  if (!allMissing) return null;
+
+  const envVars = getExpectedEnvVarNames(descriptor.name);
+  return {
+    error: {
+      code: "CREDENTIALS_MISSING",
+      message: `Authentication required for "${descriptor.name}". Set one of:\n` +
+        envVars.map((v) => `  export ${v}=<your-token>`).join("\n"),
+      env_vars: envVars,
+    },
+  };
+}
+
+/**
+ * Resolve credentials for a plugin from environment variables.
+ * Returns a ResolvedCredentials[] array — one entry per credential type
+ * declared by the plugin.
  */
 export async function resolveCredentialsForPlugin(
   descriptor: PluginDescriptor,
-  options?: { store?: CredentialStore; env?: Record<string, string | undefined> },
+  options?: { env?: Record<string, string | undefined> },
 ): Promise<ResolvedCredentials[]> {
   if (descriptor.credentials.length === 0) return [];
 
   const env = options?.env ?? process.env;
-  const serviceName = descriptor.name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  const serviceName = toEnvPrefix(descriptor.name);
 
-  // --- 1. Environment variables (always win) ---
+  // --- Environment variables ---
 
   const token =
     env[`NATHAN_${serviceName}_TOKEN`] ??
@@ -55,40 +103,6 @@ export async function resolveCredentialsForPlugin(
       primarySecret: token,
       fields: { ...envFields },
     }));
-  }
-
-  // --- 2. Credential store fallback ---
-
-  try {
-    const credStore = options?.store ?? createCredentialStore();
-    const stored = await credStore.get(descriptor.name);
-    if (stored) {
-      return descriptor.credentials
-        .filter((cred) => cred.name === stored.type)
-        .map((cred) => {
-          const secretValue =
-            stored.fields.accessToken ??
-            stored.fields.token ??
-            stored.fields.apiKey ??
-            stored.fields.password ??
-            Object.values(stored.fields)[0];
-
-          // Merge env fields over store fields (env always wins)
-          const mergedFields = { ...stored.fields, ...envFields };
-
-          return {
-            typeName: cred.name,
-            primarySecret: secretValue,
-            fields: mergedFields,
-          };
-        });
-    }
-  } catch (err) {
-    // Log credential store failures so they are not completely invisible
-    if (env.NATHAN_DEBUG) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[nathan] Credential store error: ${msg}`);
-    }
   }
 
   // Return empty credentials (no secret, no fields) for each declared type

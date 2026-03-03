@@ -11,16 +11,12 @@ import { join } from "node:path";
 import { DiscoverCommand } from "./commands/discover.js";
 import { DescribeCommand } from "./commands/describe.js";
 import { RunCommand } from "./commands/run.js";
-import { AuthAddCommand } from "./commands/auth/add.js";
-import { AuthListCommand } from "./commands/auth/list.js";
-import { AuthTestCommand } from "./commands/auth/test.js";
-import { AuthRemoveCommand } from "./commands/auth/remove.js";
 import { PluginInstallCommand } from "./commands/plugin/install.js";
 import { PluginListCommand } from "./commands/plugin/list.js";
 import { loadConfig } from "./core/config.js";
 import { registry } from "./core/registry-instance.js";
 import { loadPluginsFromDir, registerLoaderStrategy } from "./core/plugin-loader.js";
-import { createPluginCommands } from "./commands/dynamic.js";
+import { createPluginCommands, createLazyPluginCommand } from "./commands/dynamic.js";
 import { loadN8nNodeFromPath, validateModulePath } from "./n8n-compat/loader.js";
 import { discoverN8nNodes } from "./n8n-compat/discovery.js";
 import {
@@ -107,17 +103,22 @@ cli.register(Builtins.VersionCommand);
 cli.register(DiscoverCommand);
 cli.register(DescribeCommand);
 cli.register(RunCommand);
-cli.register(AuthAddCommand);
-cli.register(AuthListCommand);
-cli.register(AuthTestCommand);
-cli.register(AuthRemoveCommand);
 cli.register(PluginInstallCommand);
 cli.register(PluginListCommand);
 
-// Dynamic commands from loaded plugins
+// Dynamic commands from loaded plugins (eagerly loaded — full 3-segment paths)
 for (const plugin of registry.getAll()) {
   for (const cmd of createPluginCommands(plugin)) {
     cli.register(cmd);
+  }
+}
+
+// Lazy commands for plugins that haven't been loaded yet (1-segment catch-all).
+// Skip names that collide with built-in commands to avoid ambiguous routing.
+const RESERVED_COMMANDS = new Set(["run", "describe", "discover", "plugin", "help", "version"]);
+for (const name of registry.getAllNames()) {
+  if (registry.isLazy(name) && !RESERVED_COMMANDS.has(name)) {
+    cli.register(createLazyPluginCommand(name, registry));
   }
 }
 
