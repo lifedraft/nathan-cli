@@ -10,7 +10,7 @@
 
 import { createRequire } from "node:module";
 import type { IAuthenticateGeneric } from "./types.js";
-import type { HttpMethod } from "../core/plugin-interface.js";
+import type { HttpMethod, CredentialAuthConfig } from "../core/plugin-interface.js";
 import type { CredentialField, CredentialFieldType, CredentialTypeInfo } from "../core/credential-introspector.js";
 
 const require = createRequire(import.meta.url);
@@ -128,7 +128,7 @@ export function loadCredentialTypeDefinition(credTypeName: string): CredentialTy
  */
 export function loadCredentialAuthenticate(
   credentialType: string,
-): import("../core/plugin-interface.js").CredentialAuthConfig | null {
+): CredentialAuthConfig | null {
   const safeName = sanitizeCredTypeName(credentialType);
   if (!safeName) return null;
 

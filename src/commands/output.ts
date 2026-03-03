@@ -89,7 +89,7 @@ function summarizeValue(value: unknown): string {
 
   const obj = value as Record<string, unknown>;
   for (const key of ["login", "name", "full_name", "title", "label", "slug", "id", "email"]) {
-    if (key in obj && obj[key] != null && obj[key] !== false && obj[key] !== "") return String(obj[key]);
+    if (key in obj && obj[key] !== null && obj[key] !== undefined && obj[key] !== false && obj[key] !== "") return String(obj[key]);
   }
   const keys = Object.keys(obj);
   return chalk.dim(`{${keys.length} fields}`);

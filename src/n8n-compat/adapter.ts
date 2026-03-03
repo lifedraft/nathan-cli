@@ -23,7 +23,6 @@ import type {
   Resource,
   Operation,
   Parameter,
-  OutputSpec,
   CredentialSpec,
   ParameterType,
 } from "../core/plugin-interface.ts";
@@ -303,29 +302,6 @@ function collectScopedParameters(
   return params;
 }
 
-/**
- * Build an action label for an operation, falling back to sensible defaults.
- */
-function buildActionLabel(
-  operationProp: INodeProperties | undefined,
-  operationValue: string,
-  resourceValue: string | undefined,
-): string {
-  // Try to use the action label from the option
-  if (operationProp?.options) {
-    for (const opt of operationProp.options) {
-      if (isPropertyOption(opt) && opt.value === operationValue && opt.action) {
-        return opt.action;
-      }
-    }
-  }
-
-  const opDisplay = humanise(operationValue);
-  if (resourceValue) {
-    return `${opDisplay} ${humanise(resourceValue)}`;
-  }
-  return opDisplay;
-}
 
 /**
  * Determine a description for the operation, preferring the option's
