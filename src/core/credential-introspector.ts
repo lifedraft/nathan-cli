@@ -6,13 +6,20 @@
  * specific compatibility layers.
  */
 
-import type { CredentialAuthConfig, HttpMethod } from "./plugin-interface.js";
+import type { CredentialAuthConfig, HttpMethod } from './plugin-interface.js';
 
 /**
  * A single field in a credential type definition.
  */
 /** Known credential field types. Covers YAML plugin fields and common adapter property types. */
-export type CredentialFieldType = "string" | "number" | "boolean" | "password" | "url" | "options" | "hidden";
+export type CredentialFieldType =
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'password'
+  | 'url'
+  | 'options'
+  | 'hidden';
 
 export interface CredentialField {
   name: string;
@@ -57,9 +64,7 @@ export type CredentialExpressionResolver = (
  * Strategy for loading credential type definitions.
  * Returns null if the credential type is not recognized by this strategy.
  */
-export type CredentialIntrospectionStrategy = (
-  credTypeName: string,
-) => CredentialTypeInfo | null;
+export type CredentialIntrospectionStrategy = (credTypeName: string) => CredentialTypeInfo | null;
 
 // Module-level strategies (registered at startup by the composition root)
 const introspectionStrategies: CredentialIntrospectionStrategy[] = [];
@@ -68,7 +73,9 @@ let expressionResolver: CredentialExpressionResolver = (template) => template;
 /**
  * Register a credential introspection strategy.
  */
-export function registerCredentialIntrospectionStrategy(strategy: CredentialIntrospectionStrategy): void {
+export function registerCredentialIntrospectionStrategy(
+  strategy: CredentialIntrospectionStrategy,
+): void {
   introspectionStrategies.push(strategy);
 }
 

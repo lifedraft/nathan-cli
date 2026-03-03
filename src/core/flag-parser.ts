@@ -13,8 +13,8 @@ type FlagValue = string | number | boolean;
  * "true"/"false" become booleans, strictly decimal numeric strings become numbers.
  */
 function coerce(value: string): FlagValue {
-  if (value === "true") return true;
-  if (value === "false") return false;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
   // Only coerce strictly decimal numbers (avoid hex, Infinity, whitespace, etc.)
   if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
   return value;
@@ -29,8 +29,8 @@ export function parseFlags(args: string[]): Record<string, FlagValue> {
   let i = 0;
   while (i < args.length) {
     const arg = args[i];
-    if (arg.startsWith("--")) {
-      const eqIndex = arg.indexOf("=");
+    if (arg.startsWith('--')) {
+      const eqIndex = arg.indexOf('=');
       if (eqIndex !== -1) {
         const key = arg.slice(2, eqIndex);
         const raw = arg.slice(eqIndex + 1);
@@ -38,7 +38,7 @@ export function parseFlags(args: string[]): Record<string, FlagValue> {
       } else {
         const key = arg.slice(2);
         const next = args[i + 1];
-        if (next && !next.startsWith("--")) {
+        if (next && !next.startsWith('--')) {
           params[key] = coerce(next);
           i++;
         } else {
@@ -59,7 +59,7 @@ export function extractLimit(params: Record<string, FlagValue>): number | undefi
   const raw = params.limit;
   delete params.limit;
   if (raw === undefined || raw === true) return undefined;
-  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
 }
 
@@ -72,14 +72,14 @@ export function parseFlagsAsStrings(args: string[]): Record<string, string> {
   let i = 0;
   while (i < args.length) {
     const arg = args[i];
-    if (arg.startsWith("--")) {
-      const eqIndex = arg.indexOf("=");
+    if (arg.startsWith('--')) {
+      const eqIndex = arg.indexOf('=');
       if (eqIndex !== -1) {
         flags[arg.slice(2, eqIndex)] = arg.slice(eqIndex + 1);
       } else {
         const key = arg.slice(2);
         const next = args[i + 1];
-        if (next && !next.startsWith("--")) {
+        if (next && !next.startsWith('--')) {
           flags[key] = next;
           i++;
         }

@@ -1,20 +1,21 @@
-import { Command, Option } from "clipanion";
-import { printOutput } from "./output.js";
-import { registry } from "../core/registry-instance.js";
+import { Command, Option } from 'clipanion';
+
+import { registry } from '../core/registry-instance.js';
+import { printOutput } from './output.js';
 
 export class DiscoverCommand extends Command {
-  static override paths = [["discover"]];
+  static override paths = [['discover']];
 
   static override usage = Command.Usage({
-    description: "Discover available services, resources, and operations",
+    description: 'Discover available services, resources, and operations',
     examples: [
-      ["List all available services", "nathan discover"],
-      ["Human-readable output", "nathan discover --human"],
+      ['List all available services', 'nathan discover'],
+      ['Human-readable output', 'nathan discover --human'],
     ],
   });
 
-  human = Option.Boolean("--human", false, {
-    description: "Output in human-readable format instead of JSON",
+  human = Option.Boolean('--human', false, {
+    description: 'Output in human-readable format instead of JSON',
   });
 
   async execute(): Promise<void> {

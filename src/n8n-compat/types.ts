@@ -15,30 +15,30 @@
 // ---------------------------------------------------------------------------
 
 /** HTTP methods used in declarative-style routing. */
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
 
 /** The wire types that an INodeProperties entry can declare. */
 export type NodePropertyType =
-  | "string"
-  | "number"
-  | "boolean"
-  | "options"
-  | "multiOptions"
-  | "collection"
-  | "fixedCollection"
-  | "json"
-  | "color"
-  | "dateTime"
-  | "resourceLocator"
-  | "resourceMapper"
-  | "notice"
-  | "hidden";
+  | 'string'
+  | 'number'
+  | 'boolean'
+  | 'options'
+  | 'multiOptions'
+  | 'collection'
+  | 'fixedCollection'
+  | 'json'
+  | 'color'
+  | 'dateTime'
+  | 'resourceLocator'
+  | 'resourceMapper'
+  | 'notice'
+  | 'hidden';
 
 /** Resource-locator modes. */
-export type ResourceLocatorMode = "list" | "id" | "url" | "name";
+export type ResourceLocatorMode = 'list' | 'id' | 'url' | 'name';
 
 /** Credential authentication method shapes. */
-export type AuthenticationType = "generic" | "custom" | "none";
+export type AuthenticationType = 'generic' | 'custom' | 'none';
 
 // ---------------------------------------------------------------------------
 // Display options — controls visibility of a property
@@ -73,7 +73,7 @@ export interface INodePropertyRouting {
   send?: {
     preSend?: Array<string>;
     paginate?: boolean | string;
-    type?: "body" | "query";
+    type?: 'body' | 'query';
     property?: string;
     propertyInDotNotation?: boolean;
     value?: string;
@@ -82,7 +82,7 @@ export interface INodePropertyRouting {
     postReceive?: Array<
       | string
       | {
-          type: "rootProperty" | "set" | "setKeyValue" | "filter" | "limit" | "sort" | "binaryData";
+          type: 'rootProperty' | 'set' | 'setKeyValue' | 'filter' | 'limit' | 'sort' | 'binaryData';
           properties?: Record<string, unknown>;
           enabled?: boolean;
         }
@@ -208,7 +208,7 @@ export interface INodeProperties {
   validateType?: string;
 
   /** Default value when the expression evaluator is used. */
-  requiresDataPath?: "single" | "multiple";
+  requiresDataPath?: 'single' | 'multiple';
 
   /** Category label shown in the UI (n8n >= 1.x). */
   category?: string[];
@@ -251,16 +251,28 @@ export interface INodeRequestDefaults {
 // Input / output connection descriptions
 // ---------------------------------------------------------------------------
 
-export type ConnectionType = "main" | "ai_agent" | "ai_chain" | "ai_document" | "ai_embedding"
-  | "ai_languageModel" | "ai_memory" | "ai_outputParser" | "ai_retriever" | "ai_textSplitter"
-  | "ai_tool" | "ai_vectorStore";
+export type ConnectionType =
+  | 'main'
+  | 'ai_agent'
+  | 'ai_chain'
+  | 'ai_document'
+  | 'ai_embedding'
+  | 'ai_languageModel'
+  | 'ai_memory'
+  | 'ai_outputParser'
+  | 'ai_retriever'
+  | 'ai_textSplitter'
+  | 'ai_tool'
+  | 'ai_vectorStore';
 
-export type NodeConnectionDescription = string | {
-  type: ConnectionType;
-  displayName?: string;
-  required?: boolean;
-  maxConnections?: number;
-};
+export type NodeConnectionDescription =
+  | string
+  | {
+      type: ConnectionType;
+      displayName?: string;
+      required?: boolean;
+      maxConnections?: number;
+    };
 
 // ---------------------------------------------------------------------------
 // INodeTypeDescription — the full node descriptor
@@ -344,14 +356,40 @@ export interface INodeType {
   description: INodeTypeDescription;
   methods?: {
     loadOptions?: Record<string, () => Promise<INodePropertyOptions[]>>;
-    credentialTest?: Record<string, (credential: unknown) => Promise<{ status: string; message: string }>>;
-    listSearch?: Record<string, (filter?: string, paginationToken?: string) => Promise<{ results: Array<{ name: string; value: string }>; paginationToken?: string }>>;
-    resourceMapping?: Record<string, () => Promise<{ fields: Array<{ id: string; displayName: string; type: string; required: boolean; defaultMatch: boolean }> }>>;
+    credentialTest?: Record<
+      string,
+      (credential: unknown) => Promise<{ status: string; message: string }>
+    >;
+    listSearch?: Record<
+      string,
+      (
+        filter?: string,
+        paginationToken?: string,
+      ) => Promise<{ results: Array<{ name: string; value: string }>; paginationToken?: string }>
+    >;
+    resourceMapping?: Record<
+      string,
+      () => Promise<{
+        fields: Array<{
+          id: string;
+          displayName: string;
+          type: string;
+          required: boolean;
+          defaultMatch: boolean;
+        }>;
+      }>
+    >;
   };
   execute?: (this: IExecuteFunctions) => Promise<INodeExecutionData[][]>;
   poll?: (this: IExecuteFunctions) => Promise<INodeExecutionData[][] | null>;
-  trigger?: (this: IExecuteFunctions) => Promise<{ closeFunction?: () => Promise<void>; manualTriggerFunction?: () => Promise<void> } | undefined>;
-  webhook?: (this: IExecuteFunctions) => Promise<{ webhookResponse?: unknown; workflowData?: INodeExecutionData[][] }>;
+  trigger?: (
+    this: IExecuteFunctions,
+  ) => Promise<
+    { closeFunction?: () => Promise<void>; manualTriggerFunction?: () => Promise<void> } | undefined
+  >;
+  webhook?: (
+    this: IExecuteFunctions,
+  ) => Promise<{ webhookResponse?: unknown; workflowData?: INodeExecutionData[][] }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -415,7 +453,7 @@ export interface IHttpRequestOptions {
   proxy?: string;
   followRedirect?: boolean;
   maxRedirects?: number;
-  arrayFormat?: "indices" | "brackets" | "repeat" | "comma";
+  arrayFormat?: 'indices' | 'brackets' | 'repeat' | 'comma';
 }
 
 export interface IRequestOptions {
@@ -442,16 +480,12 @@ export interface IRequestOptions {
 }
 
 export interface IExecuteFunctions {
-  getNodeParameter(
-    parameterName: string,
-    itemIndex: number,
-    fallbackValue?: unknown,
-  ): unknown;
+  getNodeParameter(parameterName: string, itemIndex: number, fallbackValue?: unknown): unknown;
   getCredentials(type: string, itemIndex?: number): Promise<Record<string, unknown>>;
   getInputData(inputIndex?: number, inputName?: string): INodeExecutionData[];
   getWorkflow(): IWorkflowMetadata;
   getNode(): INodeMetadata;
-  getMode(): "manual" | "trigger" | "webhook" | "internal";
+  getMode(): 'manual' | 'trigger' | 'webhook' | 'internal';
   getTimezone(): string;
   getRestApiUrl(): string;
   getInstanceBaseUrl(): string;
@@ -476,10 +510,7 @@ export interface IExecuteFunctions {
       fileName?: string,
       mimeType?: string,
     ): Promise<IBinaryData>;
-    getBinaryDataBuffer(
-      itemIndex: number,
-      propertyName: string,
-    ): Promise<Buffer>;
+    getBinaryDataBuffer(itemIndex: number, propertyName: string): Promise<Buffer>;
     returnJsonArray(jsonData: unknown): INodeExecutionData[];
     constructExecutionMetaData(
       inputData: INodeExecutionData[],
@@ -503,7 +534,7 @@ export interface IExecuteFunctions {
 // ---------------------------------------------------------------------------
 
 export interface IAuthenticateGeneric {
-  type: "generic";
+  type: 'generic';
   properties: {
     headers?: Record<string, string>;
     qs?: Record<string, string>;
@@ -525,7 +556,7 @@ export interface ICredentialTestRequest {
     body?: unknown;
   };
   rules?: Array<{
-    type: "responseCode" | "responseSuccessBody";
+    type: 'responseCode' | 'responseSuccessBody';
     properties: Record<string, unknown>;
   }>;
 }
@@ -542,13 +573,17 @@ export interface ICredentialType {
   iconUrl?: string;
   extends?: string[];
   properties: INodeProperties[];
-  authenticate?: IAuthenticateGeneric | {
-    type: "custom";
-    properties: Record<string, unknown>;
-  };
+  authenticate?:
+    | IAuthenticateGeneric
+    | {
+        type: 'custom';
+        properties: Record<string, unknown>;
+      };
   test?: ICredentialTestRequest;
   /** Pre-authentication hook (e.g. for OAuth token refresh). */
-  preAuthentication?: (credentials: ICredentialDataDecryptedObject) => Promise<ICredentialDataDecryptedObject>;
+  preAuthentication?: (
+    credentials: ICredentialDataDecryptedObject,
+  ) => Promise<ICredentialDataDecryptedObject>;
 
   /** Generic auth info used by n8n to inject creds into requests. */
   genericAuth?: boolean;

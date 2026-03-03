@@ -5,7 +5,7 @@
  * providing clear error messages for agents.
  */
 
-import type { Operation, Result } from "./plugin-interface.js";
+import type { Operation, Result } from './plugin-interface.js';
 
 export function validateParameters(
   operation: Operation,
@@ -20,8 +20,8 @@ export function validateParameters(
   return {
     success: false,
     error: {
-      code: "MISSING_PARAM",
-      message: `Missing required parameter(s): ${missing.map((p) => p.name).join(", ")}`,
+      code: 'MISSING_PARAM',
+      message: `Missing required parameter(s): ${missing.map((p) => p.name).join(', ')}`,
       details: {
         missing,
         all_parameters: operation.parameters.map((p) => ({

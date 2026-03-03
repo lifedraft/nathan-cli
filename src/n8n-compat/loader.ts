@@ -6,15 +6,22 @@
  * composition root.
  */
 
-import { createRequire } from "node:module";
-import { findResource, findOperation, type Plugin, type Result, type ResolvedCredentials } from "../core/plugin-interface.js";
+import { createRequire } from 'node:module';
+
+import {
+  findResource,
+  findOperation,
+  type Plugin,
+  type Result,
+  type ResolvedCredentials,
+} from '../core/plugin-interface.js';
 
 const require = createRequire(import.meta.url);
-import { executeOperation } from "../core/executor.js";
-import { buildCredentialObject } from "../core/credential-injector.js";
-import { adaptNodeTypeDescription } from "./adapter.js";
-import { createExecutionContext } from "./execution-shim.js";
-import type { INodeType } from "./types.js";
+import { buildCredentialObject } from '../core/credential-injector.js';
+import { executeOperation } from '../core/executor.js';
+import { adaptNodeTypeDescription } from './adapter.js';
+import { createExecutionContext } from './execution-shim.js';
+import type { INodeType } from './types.js';
 
 /**
  * Build the n8n credential objects from ResolvedCredentials[].
@@ -55,17 +62,22 @@ function loadN8nNode(nodeInstance: INodeType): Plugin {
             params: { resource, operation, ...params },
             credentials: credMap,
             nodeProperties: nodeInstance.description.properties,
-            operationMeta: op ? {
-              resource,
-              operation,
-              requiredParams: op.parameters.filter((p) => p.required).map((p) => p.name),
-            } : undefined,
+            operationMeta: op
+              ? {
+                  resource,
+                  operation,
+                  requiredParams: op.parameters.filter((p) => p.required).map((p) => p.name),
+                }
+              : undefined,
           });
 
           const result = await nodeInstance.execute.call(ctx);
 
           if (!result) return { success: true, data: [] };
-          const flatData = result.flat().filter((item) => item?.json).map((item) => item.json);
+          const flatData = result
+            .flat()
+            .filter((item) => item?.json)
+            .map((item) => item.json);
           return {
             success: true,
             data: flatData.length === 1 ? flatData[0] : flatData,
@@ -74,7 +86,7 @@ function loadN8nNode(nodeInstance: INodeType): Plugin {
           return {
             success: false,
             error: {
-              code: "EXECUTION_ERROR",
+              code: 'EXECUTION_ERROR',
               message: err instanceof Error ? err.message : String(err),
               details: process.env.NATHAN_DEBUG && err instanceof Error ? err.stack : undefined,
             },
@@ -89,13 +101,13 @@ function loadN8nNode(nodeInstance: INodeType): Plugin {
         return {
           success: false,
           error: {
-            code: "UNKNOWN_OPERATION",
+            code: 'UNKNOWN_OPERATION',
             message: `Unknown: ${resource}/${operation}`,
           },
         };
       }
 
-      const baseUrl = nodeInstance.description.requestDefaults?.baseURL ?? "";
+      const baseUrl = nodeInstance.description.requestDefaults?.baseURL ?? '';
       return executeOperation(op, params, { baseUrl, credentials });
     },
   };
@@ -108,22 +120,27 @@ function loadN8nNode(nodeInstance: INodeType): Plugin {
  */
 export async function loadN8nNodeFromPath(modulePath: string): Promise<Plugin> {
   const mod = require(modulePath);
-  const NodeClass = mod.default ?? Object.values(mod).find(
-    (v: unknown) => typeof v === "function" && (v as { prototype?: { description?: unknown } }).prototype?.description,
-  ) ?? Object.values(mod).find(
-    (v: unknown) => typeof v === "function",
-  );
+  const NodeClass =
+    mod.default ??
+    Object.values(mod).find(
+      (v: unknown) =>
+        typeof v === 'function' &&
+        (v as { prototype?: { description?: unknown } }).prototype?.description,
+    ) ??
+    Object.values(mod).find((v: unknown) => typeof v === 'function');
 
-  if (!NodeClass || typeof NodeClass !== "function") {
+  if (!NodeClass || typeof NodeClass !== 'function') {
     throw new Error(`No node class found in ${modulePath}`);
   }
 
-  const instance = new (NodeClass as new () => INodeType & { nodeVersions?: Record<string, INodeType> })();
+  const instance = new (NodeClass as new () => INodeType & {
+    nodeVersions?: Record<string, INodeType>;
+  })();
 
   // Validate that the instance looks like an n8n node
   if (!instance.description?.name || !Array.isArray(instance.description?.properties)) {
     // Handle versioned nodes (e.g., Postgres, MySQL, Slack)
-    if (instance.nodeVersions && typeof instance.nodeVersions === "object") {
+    if (instance.nodeVersions && typeof instance.nodeVersions === 'object') {
       const versions = Object.keys(instance.nodeVersions).sort((a, b) => Number(a) - Number(b));
       const latestKey = versions[versions.length - 1];
       const latestNode = instance.nodeVersions[latestKey];
@@ -135,7 +152,7 @@ export async function loadN8nNodeFromPath(modulePath: string): Promise<Plugin> {
   }
 
   // Handle versioned nodes (e.g., Postgres, MySQL, Slack)
-  if (instance.nodeVersions && typeof instance.nodeVersions === "object") {
+  if (instance.nodeVersions && typeof instance.nodeVersions === 'object') {
     const versions = Object.keys(instance.nodeVersions).sort((a, b) => Number(a) - Number(b));
     const latestKey = versions[versions.length - 1];
     const latestNode = instance.nodeVersions[latestKey];
@@ -158,7 +175,7 @@ const SAFE_MODULE_PATTERN = /^[a-zA-Z0-9@][a-zA-Z0-9\-_./]*$/;
  * Rejects path traversal (../) and absolute paths.
  */
 export function validateModulePath(modulePath: string): boolean {
-  if (modulePath.includes("..")) return false;
-  if (modulePath.startsWith("/")) return false;
+  if (modulePath.includes('..')) return false;
+  if (modulePath.startsWith('/')) return false;
   return SAFE_MODULE_PATTERN.test(modulePath);
 }

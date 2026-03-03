@@ -7,13 +7,13 @@
  * Returns ResolvedCredentials[] — one entry per credential type declared by the plugin.
  */
 
-import type { PluginDescriptor, ResolvedCredentials } from "./plugin-interface.js";
+import type { PluginDescriptor, ResolvedCredentials } from './plugin-interface.js';
 
 /**
  * Normalise a service name to the upper-case env var prefix form.
  */
 function toEnvPrefix(serviceName: string): string {
-  return serviceName.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  return serviceName.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 }
 
 /**
@@ -21,12 +21,7 @@ function toEnvPrefix(serviceName: string): string {
  */
 export function getExpectedEnvVarNames(serviceName: string): string[] {
   const s = toEnvPrefix(serviceName);
-  return [
-    `NATHAN_${s}_TOKEN`,
-    `${s}_TOKEN`,
-    `NATHAN_${s}_API_KEY`,
-    `${s}_API_KEY`,
-  ];
+  return [`NATHAN_${s}_TOKEN`, `${s}_TOKEN`, `NATHAN_${s}_API_KEY`, `${s}_API_KEY`];
 }
 
 /**
@@ -56,9 +51,10 @@ export function checkCredentialsConfigured(
   const envVars = getExpectedEnvVarNames(descriptor.name);
   return {
     error: {
-      code: "CREDENTIALS_MISSING",
-      message: `Authentication required for "${descriptor.name}". Set one of:\n` +
-        envVars.map((v) => `  export ${v}=<your-token>`).join("\n"),
+      code: 'CREDENTIALS_MISSING',
+      message:
+        `Authentication required for "${descriptor.name}". Set one of:\n` +
+        envVars.map((v) => `  export ${v}=<your-token>`).join('\n'),
       env_vars: envVars,
     },
   };

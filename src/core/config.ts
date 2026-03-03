@@ -6,8 +6,8 @@
  * rather than reaching into process.env directly.
  */
 
-import { join } from "node:path";
-import { homedir } from "node:os";
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 export interface NathanConfig {
   /** Enable verbose debug logging. */
@@ -29,8 +29,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     allowHttp: !!env.NATHAN_ALLOW_HTTP,
     pluginDirs: [
       env.NATHAN_PLUGINS,
-      join(homedir(), ".nathan", "plugins"),
-      join(process.cwd(), "plugins"),
-    ].filter((x): x is string => typeof x === "string"),
+      join(homedir(), '.nathan', 'plugins'),
+      join(process.cwd(), 'plugins'),
+    ].filter((x): x is string => typeof x === 'string'),
   };
 }

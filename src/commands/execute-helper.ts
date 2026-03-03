@@ -5,11 +5,14 @@
  * credential resolution → fail-fast check → plugin.execute → output.
  */
 
-import type { Plugin, Operation } from "../core/plugin-interface.js";
-import { parseFlags, extractLimit } from "../core/flag-parser.js";
-import { resolveCredentialsForPlugin, checkCredentialsConfigured } from "../core/credential-resolver.js";
-import { validateParameters } from "../core/parameter-validator.js";
-import { printOutput } from "./output.js";
+import {
+  resolveCredentialsForPlugin,
+  checkCredentialsConfigured,
+} from '../core/credential-resolver.js';
+import { parseFlags, extractLimit } from '../core/flag-parser.js';
+import { validateParameters } from '../core/parameter-validator.js';
+import type { Plugin, Operation } from '../core/plugin-interface.js';
+import { printOutput } from './output.js';
 
 /**
  * Execute a plugin operation with full validation, credential checks, and output.

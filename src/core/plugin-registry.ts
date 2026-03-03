@@ -9,7 +9,7 @@
  * and a loader function. The loader is called on first access via getOrLoad().
  */
 
-import type { Plugin } from "./plugin-interface.js";
+import type { Plugin } from './plugin-interface.js';
 
 export interface PluginRegistry {
   /** Register a plugin eagerly. Overwrites if name already exists (including lazy). */

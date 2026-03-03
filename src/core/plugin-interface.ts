@@ -3,19 +3,19 @@
  */
 
 /** Supported HTTP methods for operations. */
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS";
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
 
 /** Parameter location in the HTTP request. */
-export type ParameterLocation = "query" | "path" | "header" | "body" | "cookie";
+export type ParameterLocation = 'query' | 'path' | 'header' | 'body' | 'cookie';
 
 /** Parameter types. */
-export type ParameterType = "string" | "number" | "boolean" | "object" | "array";
+export type ParameterType = 'string' | 'number' | 'boolean' | 'object' | 'array';
 
 /** Output format for operation results. */
-export type OutputFormat = "json" | "text" | "binary";
+export type OutputFormat = 'json' | 'text' | 'binary';
 
 /** Plugin types supported by the loader. */
-export type PluginType = "declarative" | "adapted" | "native";
+export type PluginType = 'declarative' | 'adapted' | 'native';
 
 /**
  * Describes a single parameter accepted by an operation.
@@ -74,12 +74,12 @@ export interface Resource {
 export interface CredentialSpec {
   name: string;
   displayName: string;
-  type: "api_key" | "oauth2" | "bearer" | "basic" | "custom";
+  type: 'api_key' | 'oauth2' | 'bearer' | 'basic' | 'custom';
   /** Fields that must be provided for this credential. */
   fields: Array<{
     name: string;
     displayName: string;
-    type: "string" | "password" | "url";
+    type: 'string' | 'password' | 'url';
     required: boolean;
     default?: string;
     description?: string;
@@ -113,17 +113,17 @@ export interface ResultMetadata {
 
 /** Known error codes used across the system. */
 export type ErrorCode =
-  | "MISSING_PARAM"
-  | "UNKNOWN_RESOURCE"
-  | "UNKNOWN_OPERATION"
-  | "HTTP_ERROR"
-  | "REQUEST_FAILED"
-  | "EXECUTION_ERROR"
-  | "PLUGIN_NOT_FOUND"
-  | "RESOURCE_NOT_FOUND"
-  | "OPERATION_NOT_FOUND"
-  | "STARTUP_ERROR"
-  | "CREDENTIAL_ERROR"
+  | 'MISSING_PARAM'
+  | 'UNKNOWN_RESOURCE'
+  | 'UNKNOWN_OPERATION'
+  | 'HTTP_ERROR'
+  | 'REQUEST_FAILED'
+  | 'EXECUTION_ERROR'
+  | 'PLUGIN_NOT_FOUND'
+  | 'RESOURCE_NOT_FOUND'
+  | 'OPERATION_NOT_FOUND'
+  | 'STARTUP_ERROR'
+  | 'CREDENTIAL_ERROR'
   | (string & {}); // Allow custom codes while providing autocomplete for known ones
 
 /**

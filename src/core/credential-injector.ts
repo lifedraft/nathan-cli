@@ -6,11 +6,11 @@
  * execution-shim.ts, and auth/test.ts.
  */
 
-import type { ResolvedCredentials, CredentialAuthConfig } from "./plugin-interface.js";
-import { resolveCredentialExpr } from "./credential-introspector.js";
+import { resolveCredentialExpr } from './credential-introspector.js';
+import type { ResolvedCredentials, CredentialAuthConfig } from './plugin-interface.js';
 
 // Re-export for backward compatibility
-export type { CredentialAuthConfig } from "./plugin-interface.js";
+export type { CredentialAuthConfig } from './plugin-interface.js';
 
 /**
  * The result of credential injection — headers and optional query params
@@ -27,13 +27,16 @@ export interface InjectionResult {
 
 /** Strip CR/LF to prevent HTTP header injection. */
 function sanitizeHeaderValue(value: string): string {
-  return value.replace(/[\r\n]/g, "");
+  return value.replace(/[\r\n]/g, '');
 }
 
 const PRIVATE_IP_PATTERNS = [
-  /^127\./, /^10\./, /^192\.168\./,
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
   /^172\.(1[6-9]|2\d|3[01])\./,
-  /^169\.254\./, /^0\./,
+  /^169\.254\./,
+  /^0\./,
 ];
 
 /**
@@ -46,10 +49,10 @@ const PRIVATE_IP_PATTERNS = [
 export function validateUrlForCredentials(url: string): string | null {
   try {
     const parsed = new URL(url);
-    const hostname = parsed.hostname.replace(/^\[|\]$/g, ""); // strip IPv6 brackets
+    const hostname = parsed.hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets
 
     // Block private/internal IPs
-    if (hostname === "localhost" || hostname === "::1") {
+    if (hostname === 'localhost' || hostname === '::1') {
       return `Refusing to send credentials to localhost (${url}). Set NATHAN_ALLOW_HTTP=1 to override.`;
     }
     for (const pattern of PRIVATE_IP_PATTERNS) {
@@ -59,7 +62,7 @@ export function validateUrlForCredentials(url: string): string | null {
     }
 
     // Block non-HTTPS
-    if (parsed.protocol !== "https:") {
+    if (parsed.protocol !== 'https:') {
       return `Refusing to send credentials over insecure transport (${parsed.protocol}). Set NATHAN_ALLOW_HTTP=1 to override.`;
     }
 
@@ -81,9 +84,7 @@ export function validateUrlForCredentials(url: string): string | null {
  * expression templates like `{{$credentials?.accessToken}}` resolve
  * correctly even when the user only stored a single token value.
  */
-export function buildCredentialObject(
-  cred: ResolvedCredentials,
-): Record<string, unknown> {
+export function buildCredentialObject(cred: ResolvedCredentials): Record<string, unknown> {
   const obj: Record<string, unknown> = { ...cred.fields };
 
   if (cred.primarySecret) {
@@ -121,7 +122,10 @@ export function applyCredentialAuth(
 
   // --- 1. Try explicit auth config ---
 
-  if (authConfig && (authConfig.headers || authConfig.queryParams || authConfig.body || authConfig.basicAuth)) {
+  if (
+    authConfig &&
+    (authConfig.headers || authConfig.queryParams || authConfig.body || authConfig.basicAuth)
+  ) {
     // Apply headers
     if (authConfig.headers) {
       for (const [key, template] of Object.entries(authConfig.headers)) {
@@ -144,7 +148,7 @@ export function applyCredentialAuth(
       const user = resolveCredentialExpr(authConfig.basicAuth.username, credentialValues);
       const pass = resolveCredentialExpr(authConfig.basicAuth.password, credentialValues);
       const encoded = btoa(`${user}:${pass}`);
-      headers["Authorization"] = `Basic ${encoded}`;
+      headers['Authorization'] = `Basic ${encoded}`;
     }
 
     return { headers, queryParams };
@@ -153,41 +157,44 @@ export function applyCredentialAuth(
   // --- 2. Fallback: common patterns ---
 
   // API key in header (validate header name against HTTP spec)
-  if (credentialValues.apiKey && typeof credentialValues.apiKey === "string") {
+  if (credentialValues.apiKey && typeof credentialValues.apiKey === 'string') {
     const VALID_HEADER_NAME = /^[a-zA-Z0-9\-_]+$/;
-    const rawName = typeof credentialValues.headerName === "string" ? credentialValues.headerName : "Authorization";
-    const headerName = VALID_HEADER_NAME.test(rawName) ? rawName : "Authorization";
+    const rawName =
+      typeof credentialValues.headerName === 'string'
+        ? credentialValues.headerName
+        : 'Authorization';
+    const headerName = VALID_HEADER_NAME.test(rawName) ? rawName : 'Authorization';
     headers[headerName] = sanitizeHeaderValue(credentialValues.apiKey);
   }
 
   // Bearer token (accessToken)
   if (
     credentialValues.accessToken &&
-    typeof credentialValues.accessToken === "string" &&
-    !headers["Authorization"]
+    typeof credentialValues.accessToken === 'string' &&
+    !headers['Authorization']
   ) {
-    headers["Authorization"] = `Bearer ${credentialValues.accessToken}`;
+    headers['Authorization'] = `Bearer ${credentialValues.accessToken}`;
   }
 
   // Bearer token (token)
   if (
     credentialValues.token &&
-    typeof credentialValues.token === "string" &&
-    !headers["Authorization"]
+    typeof credentialValues.token === 'string' &&
+    !headers['Authorization']
   ) {
-    headers["Authorization"] = `Bearer ${credentialValues.token}`;
+    headers['Authorization'] = `Bearer ${credentialValues.token}`;
   }
 
   // Basic auth
   if (
     credentialValues.user &&
     credentialValues.password &&
-    typeof credentialValues.user === "string" &&
-    typeof credentialValues.password === "string" &&
-    !headers["Authorization"]
+    typeof credentialValues.user === 'string' &&
+    typeof credentialValues.password === 'string' &&
+    !headers['Authorization']
   ) {
     const encoded = btoa(`${credentialValues.user}:${credentialValues.password}`);
-    headers["Authorization"] = `Basic ${encoded}`;
+    headers['Authorization'] = `Basic ${encoded}`;
   }
 
   return { headers, queryParams };
@@ -207,9 +214,7 @@ export function injectCredentials(
   if (credentials.length === 0) return { headers: {} };
 
   // Use the first credential type that has a secret or fields
-  const cred = credentials.find(
-    (c) => c.primarySecret || Object.keys(c.fields).length > 0,
-  );
+  const cred = credentials.find((c) => c.primarySecret || Object.keys(c.fields).length > 0);
   if (!cred) return { headers: {} };
 
   const credObj = buildCredentialObject(cred);

@@ -5,6 +5,6 @@
  * the registry, and index.ts imports commands.
  */
 
-import { createPluginRegistry } from "./plugin-registry.js";
+import { createPluginRegistry } from './plugin-registry.js';
 
 export const registry = createPluginRegistry();

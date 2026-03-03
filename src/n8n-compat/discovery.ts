@@ -5,8 +5,8 @@
  * workflow-internal nodes, and returns entries ready for lazy registration.
  */
 
-import { createRequire } from "node:module";
-import { join } from "node:path";
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 
 const require = createRequire(import.meta.url);
 
@@ -23,76 +23,76 @@ export interface DiscoveredNode {
  */
 const EXCLUDED_NODE_NAMES = new Set([
   // Triggers without "Trigger" in filename
-  "Cron",
-  "Interval",
-  "Schedule",
-  "Start",
+  'Cron',
+  'Interval',
+  'Schedule',
+  'Start',
   // Control flow
-  "If",
-  "Switch",
-  "Filter",
-  "Merge",
-  "SplitInBatches",
-  "CompareDatasets",
-  "Wait",
+  'If',
+  'Switch',
+  'Filter',
+  'Merge',
+  'SplitInBatches',
+  'CompareDatasets',
+  'Wait',
   // Workflow utilities
-  "NoOp",
-  "StickyNote",
-  "StopAndError",
-  "Set",
-  "RenameKeys",
-  "RespondToWebhook",
-  "ExecutionData",
+  'NoOp',
+  'StickyNote',
+  'StopAndError',
+  'Set',
+  'RenameKeys',
+  'RespondToWebhook',
+  'ExecutionData',
   // Code execution
-  "Code",
-  "Function",
-  "FunctionItem",
-  "ExecuteCommand",
-  "ExecuteWorkflow",
+  'Code',
+  'Function',
+  'FunctionItem',
+  'ExecuteCommand',
+  'ExecuteWorkflow',
   // File/binary handling
-  "ReadBinaryFile",
-  "ReadBinaryFiles",
-  "ReadPdf",
-  "WriteBinaryFile",
-  "MoveBinaryData",
-  "Files",
+  'ReadBinaryFile',
+  'ReadBinaryFiles',
+  'ReadPdf',
+  'WriteBinaryFile',
+  'MoveBinaryData',
+  'Files',
   // Data transform
-  "Crypto",
-  "DateTime",
-  "Compression",
-  "SpreadsheetFile",
-  "Xml",
-  "Markdown",
-  "Html",
-  "HtmlExtract",
-  "ItemLists",
-  "Jwt",
-  "Totp",
-  "ICalendar",
-  "Transform",
+  'Crypto',
+  'DateTime',
+  'Compression',
+  'SpreadsheetFile',
+  'Xml',
+  'Markdown',
+  'Html',
+  'HtmlExtract',
+  'ItemLists',
+  'Jwt',
+  'Totp',
+  'ICalendar',
+  'Transform',
   // Internal/test
-  "N8n",
-  "N8nTrainingCustomerDatastore",
-  "N8nTrainingCustomerMessenger",
-  "E2eTest",
-  "DebugHelper",
-  "ErrorTrigger",
-  "Evaluation",
-  "TimeSaved",
-  "DataTable",
-  "Simulate",
-  "AiTransform",
+  'N8n',
+  'N8nTrainingCustomerDatastore',
+  'N8nTrainingCustomerMessenger',
+  'E2eTest',
+  'DebugHelper',
+  'ErrorTrigger',
+  'Evaluation',
+  'TimeSaved',
+  'DataTable',
+  'Simulate',
+  'AiTransform',
   // Infra (requires running servers)
-  "Amqp",
-  "Kafka",
-  "RabbitMQ",
-  "MQTT",
+  'Amqp',
+  'Kafka',
+  'RabbitMQ',
+  'MQTT',
   // Other non-API
-  "Ssh",
-  "Ftp",
-  "Ldap",
-  "EditImage",
-  "Form",
+  'Ssh',
+  'Ftp',
+  'Ldap',
+  'EditImage',
+  'Form',
 ]);
 
 /**
@@ -119,7 +119,7 @@ function toServiceName(nodeName: string): string {
  * This is a pure function over the package.json data.
  */
 export function discoverN8nNodes(): DiscoveredNode[] {
-  const pkg = require("n8n-nodes-base/package.json");
+  const pkg = require('n8n-nodes-base/package.json');
   const nodePaths: string[] = pkg?.n8n?.nodes ?? [];
 
   const results: DiscoveredNode[] = [];
@@ -129,14 +129,14 @@ export function discoverN8nNodes(): DiscoveredNode[] {
     if (!nodeName) continue;
 
     // Skip triggers
-    if (nodeName.includes("Trigger")) continue;
+    if (nodeName.includes('Trigger')) continue;
 
     // Skip excluded workflow-internal nodes
     if (EXCLUDED_NODE_NAMES.has(nodeName)) continue;
 
     const serviceName = toServiceName(nodeName);
     const modulePath = join(
-      require.resolve("n8n-nodes-base/package.json").replace("/package.json", ""),
+      require.resolve('n8n-nodes-base/package.json').replace('/package.json', ''),
       nodePath,
     );
 

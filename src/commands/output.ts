@@ -5,8 +5,8 @@
  * for human-readable formatting.
  */
 
-import chalk from "chalk";
-import Table from "cli-table3";
+import chalk from 'chalk';
+import Table from 'cli-table3';
 
 export interface OutputOptions {
   human?: boolean;
@@ -59,10 +59,10 @@ function formatJson(data: unknown, pretty: boolean): string {
  */
 function formatHuman(data: unknown): string {
   if (data === null || data === undefined) {
-    return chalk.dim("(empty)");
+    return chalk.dim('(empty)');
   }
 
-  if (typeof data === "string") {
+  if (typeof data === 'string') {
     return data;
   }
 
@@ -70,7 +70,7 @@ function formatHuman(data: unknown): string {
     return formatArray(data);
   }
 
-  if (typeof data === "object") {
+  if (typeof data === 'object') {
     return formatObject(data as Record<string, unknown>);
   }
 
@@ -83,13 +83,20 @@ function formatHuman(data: unknown): string {
  * a field-count summary — avoids dumping raw JSON blobs in table cells.
  */
 function summarizeValue(value: unknown): string {
-  if (value === null || value === undefined) return chalk.dim("—");
-  if (typeof value !== "object") return String(value);
+  if (value === null || value === undefined) return chalk.dim('—');
+  if (typeof value !== 'object') return String(value);
   if (Array.isArray(value)) return chalk.dim(`[${value.length} items]`);
 
   const obj = value as Record<string, unknown>;
-  for (const key of ["login", "name", "full_name", "title", "label", "slug", "id", "email"]) {
-    if (key in obj && obj[key] !== null && obj[key] !== undefined && obj[key] !== false && obj[key] !== "") return String(obj[key]);
+  for (const key of ['login', 'name', 'full_name', 'title', 'label', 'slug', 'id', 'email']) {
+    if (
+      key in obj &&
+      obj[key] !== null &&
+      obj[key] !== undefined &&
+      obj[key] !== false &&
+      obj[key] !== ''
+    )
+      return String(obj[key]);
   }
   const keys = Object.keys(obj);
   return chalk.dim(`{${keys.length} fields}`);
@@ -100,12 +107,12 @@ function summarizeValue(value: unknown): string {
  */
 function formatArray(items: unknown[]): string {
   if (items.length === 0) {
-    return chalk.dim("(no items)");
+    return chalk.dim('(no items)');
   }
 
   const first = items[0];
-  if (typeof first !== "object" || first === null) {
-    return items.map((item) => `  ${chalk.white(String(item))}`).join("\n");
+  if (typeof first !== 'object' || first === null) {
+    return items.map((item) => `  ${chalk.white(String(item))}`).join('\n');
   }
 
   const keys = Object.keys(first as Record<string, unknown>);
@@ -131,7 +138,7 @@ function formatArray(items: unknown[]): string {
 function formatObject(obj: Record<string, unknown>): string {
   const lines: string[] = [];
   const objKeys = Object.keys(obj);
-  if (objKeys.length === 0) return chalk.dim("(empty object)");
+  if (objKeys.length === 0) return chalk.dim('(empty object)');
   const maxKeyLen = Math.max(...objKeys.map((k) => k.length));
 
   for (const [key, value] of Object.entries(obj)) {
@@ -139,7 +146,7 @@ function formatObject(obj: Record<string, unknown>): string {
     lines.push(`  ${chalk.cyan(paddedKey)}  ${summarizeValue(value)}`);
   }
 
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 /**
@@ -147,7 +154,7 @@ function formatObject(obj: Record<string, unknown>): string {
  */
 export function printError(message: string, options: OutputOptions = {}): void {
   if (options.human) {
-    console.error(chalk.red.bold("Error:"), chalk.red(message));
+    console.error(chalk.red.bold('Error:'), chalk.red(message));
   } else {
     console.error(JSON.stringify({ error: message }));
   }
@@ -158,8 +165,8 @@ export function printError(message: string, options: OutputOptions = {}): void {
  */
 export function printSuccess(message: string, options: OutputOptions = {}): void {
   if (options.human) {
-    console.log(chalk.green.bold("OK:"), chalk.green(message));
+    console.log(chalk.green.bold('OK:'), chalk.green(message));
   } else {
-    console.log(JSON.stringify({ status: "ok", message }));
+    console.log(JSON.stringify({ status: 'ok', message }));
   }
 }

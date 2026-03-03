@@ -8,10 +8,15 @@
  * All n8n credential module loading now goes through this single module.
  */
 
-import { createRequire } from "node:module";
-import type { IAuthenticateGeneric } from "./types.js";
-import type { HttpMethod, CredentialAuthConfig } from "../core/plugin-interface.js";
-import type { CredentialField, CredentialFieldType, CredentialTypeInfo } from "../core/credential-introspector.js";
+import { createRequire } from 'node:module';
+
+import type {
+  CredentialField,
+  CredentialFieldType,
+  CredentialTypeInfo,
+} from '../core/credential-introspector.js';
+import type { HttpMethod, CredentialAuthConfig } from '../core/plugin-interface.js';
+import type { IAuthenticateGeneric } from './types.js';
 
 const require = createRequire(import.meta.url);
 
@@ -21,13 +26,21 @@ const require = createRequire(import.meta.url);
 
 const SAFE_CRED_TYPE_PATTERN = /^[a-zA-Z][a-zA-Z0-9]*$/;
 
-const VALID_CRED_FIELD_TYPES = new Set<CredentialFieldType>(["string", "number", "boolean", "password", "url", "options", "hidden"]);
+const VALID_CRED_FIELD_TYPES = new Set<CredentialFieldType>([
+  'string',
+  'number',
+  'boolean',
+  'password',
+  'url',
+  'options',
+  'hidden',
+]);
 
 function toCredentialFieldType(raw: unknown): CredentialFieldType {
-  if (typeof raw === "string" && VALID_CRED_FIELD_TYPES.has(raw as CredentialFieldType)) {
+  if (typeof raw === 'string' && VALID_CRED_FIELD_TYPES.has(raw as CredentialFieldType)) {
     return raw as CredentialFieldType;
   }
-  return "string";
+  return 'string';
 }
 
 /**
@@ -59,15 +72,17 @@ export function loadCredentialTypeDefinition(credTypeName: string): CredentialTy
     const pascalName = safeName.charAt(0).toUpperCase() + safeName.slice(1);
     const mod = require(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
     const CredClass = mod[pascalName] ?? mod.default ?? Object.values(mod)[0];
-    if (!CredClass || typeof CredClass !== "function") return null;
+    if (!CredClass || typeof CredClass !== 'function') return null;
 
     const instance = new (CredClass as new () => Record<string, unknown>)();
-    const properties: CredentialField[] = ((instance.properties ?? []) as Array<Record<string, unknown>>).map((p) => {
+    const properties: CredentialField[] = (
+      (instance.properties ?? []) as Array<Record<string, unknown>>
+    ).map((p) => {
       const isPassword = (p.typeOptions as Record<string, unknown> | undefined)?.password === true;
-      const hasEmptyDefault = p.default === "" || p.default === undefined;
+      const hasEmptyDefault = p.default === '' || p.default === undefined;
       return {
-        name: String(p.name ?? ""),
-        displayName: String(p.displayName ?? p.name ?? ""),
+        name: String(p.name ?? ''),
+        displayName: String(p.displayName ?? p.name ?? ''),
         type: toCredentialFieldType(p.type),
         default: p.default,
         isPassword,
@@ -79,11 +94,11 @@ export function loadCredentialTypeDefinition(credTypeName: string): CredentialTy
     // Normalize n8n authenticate config into core CredentialAuthConfig
     const rawAuth = instance.authenticate as
       | IAuthenticateGeneric
-      | { type: "custom"; properties: Record<string, unknown> }
+      | { type: 'custom'; properties: Record<string, unknown> }
       | null
       | undefined;
-    const authenticate: CredentialTypeInfo["authenticate"] =
-      rawAuth?.type === "generic" && rawAuth.properties
+    const authenticate: CredentialTypeInfo['authenticate'] =
+      rawAuth?.type === 'generic' && rawAuth.properties
         ? {
             headers: rawAuth.properties.headers,
             queryParams: rawAuth.properties.qs,
@@ -97,7 +112,7 @@ export function loadCredentialTypeDefinition(credTypeName: string): CredentialTy
       | { request: Record<string, unknown>; rules?: unknown }
       | null
       | undefined;
-    const test: CredentialTypeInfo["test"] = rawTest?.request
+    const test: CredentialTypeInfo['test'] = rawTest?.request
       ? {
           request: {
             method: rawTest.request.method as HttpMethod | undefined,
@@ -126,9 +141,7 @@ export function loadCredentialTypeDefinition(credTypeName: string): CredentialTy
  * Translates from n8n's IAuthenticateGeneric to core's CredentialAuthConfig.
  * Used by the execution shim to inject credentials into HTTP requests.
  */
-export function loadCredentialAuthenticate(
-  credentialType: string,
-): CredentialAuthConfig | null {
+export function loadCredentialAuthenticate(credentialType: string): CredentialAuthConfig | null {
   const safeName = sanitizeCredTypeName(credentialType);
   if (!safeName) return null;
 
@@ -136,10 +149,14 @@ export function loadCredentialAuthenticate(
     const pascalName = safeName.charAt(0).toUpperCase() + safeName.slice(1);
     const mod = require(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
     const CredClass = mod[pascalName] ?? mod.default ?? Object.values(mod)[0];
-    if (CredClass && typeof CredClass === "function") {
+    if (CredClass && typeof CredClass === 'function') {
       const instance = new (CredClass as new () => Record<string, unknown>)();
       const auth = instance.authenticate;
-      if (auth && typeof auth === "object" && (auth as Record<string, unknown>).type === "generic") {
+      if (
+        auth &&
+        typeof auth === 'object' &&
+        (auth as Record<string, unknown>).type === 'generic'
+      ) {
         const generic = auth as IAuthenticateGeneric;
         return {
           headers: generic.properties?.headers,
@@ -161,13 +178,10 @@ export function resolveCredentialExpression(
   template: string,
   credentials: Record<string, unknown>,
 ): string {
-  let expr = template.startsWith("=") ? template.slice(1) : template;
-  expr = expr.replace(
-    /\{\{\s*\$credentials\??\.\s*(\w+)\s*\}\}/g,
-    (_match, key) => {
-      const val = credentials[key];
-      return val !== undefined ? String(val) : "";
-    },
-  );
+  let expr = template.startsWith('=') ? template.slice(1) : template;
+  expr = expr.replace(/\{\{\s*\$credentials\??\.\s*(\w+)\s*\}\}/g, (_match, key) => {
+    const val = credentials[key];
+    return val !== undefined ? String(val) : '';
+  });
   return expr;
 }

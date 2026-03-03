@@ -10,22 +10,21 @@
  */
 
 import type {
-  INodeTypeDescription,
-  INodeProperties,
-  INodePropertyOptions,
-  INodePropertyCollectionEntry,
-  NodePropertyType,
-  HttpMethod,
-} from "./types.ts";
-
-import type {
   PluginDescriptor,
   Resource,
   Operation,
   Parameter,
   CredentialSpec,
   ParameterType,
-} from "../core/plugin-interface.ts";
+} from '../core/plugin-interface.ts';
+import type {
+  INodeTypeDescription,
+  INodeProperties,
+  INodePropertyOptions,
+  INodePropertyCollectionEntry,
+  NodePropertyType,
+  HttpMethod,
+} from './types.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,40 +35,40 @@ import type {
  */
 function mapParameterType(n8nType: NodePropertyType): ParameterType {
   switch (n8nType) {
-    case "number":
-      return "number";
-    case "boolean":
-      return "boolean";
-    case "json":
-    case "collection":
-    case "fixedCollection":
-    case "resourceMapper":
-      return "object";
-    case "multiOptions":
-      return "array";
-    case "string":
-    case "options":
-    case "color":
-    case "dateTime":
-    case "resourceLocator":
-    case "notice":
-    case "hidden":
+    case 'number':
+      return 'number';
+    case 'boolean':
+      return 'boolean';
+    case 'json':
+    case 'collection':
+    case 'fixedCollection':
+    case 'resourceMapper':
+      return 'object';
+    case 'multiOptions':
+      return 'array';
+    case 'string':
+    case 'options':
+    case 'color':
+    case 'dateTime':
+    case 'resourceLocator':
+    case 'notice':
+    case 'hidden':
     default:
-      return "string";
+      return 'string';
   }
 }
 
 /**
  * Map n8n credential auth type names to nathan CredentialSpec types.
  */
-function inferCredentialType(credName: string): CredentialSpec["type"] {
+function inferCredentialType(credName: string): CredentialSpec['type'] {
   const lower = credName.toLowerCase();
-  if (lower.includes("oauth2")) return "oauth2";
-  if (lower.includes("oauth")) return "oauth2";
-  if (lower.includes("bearer") || lower.includes("token")) return "bearer";
-  if (lower.includes("basic") || lower.includes("digest")) return "basic";
-  if (lower.includes("api") || lower.includes("key")) return "api_key";
-  return "custom";
+  if (lower.includes('oauth2')) return 'oauth2';
+  if (lower.includes('oauth')) return 'oauth2';
+  if (lower.includes('bearer') || lower.includes('token')) return 'bearer';
+  if (lower.includes('basic') || lower.includes('digest')) return 'basic';
+  if (lower.includes('api') || lower.includes('key')) return 'api_key';
+  return 'custom';
 }
 
 /**
@@ -77,8 +76,8 @@ function inferCredentialType(credName: string): CredentialSpec["type"] {
  */
 function humanise(name: string): string {
   return name
-    .replace(/[-_]/g, " ")
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[-_]/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/\b\w/g, (c) => c.toUpperCase())
     .trim();
 }
@@ -107,9 +106,9 @@ function matchesDisplayOptions(
   // --- show ---
   if (opts.show) {
     for (const [key, allowedValues] of Object.entries(opts.show)) {
-      if (key === "resource" && resource !== undefined) {
+      if (key === 'resource' && resource !== undefined) {
         if (!allowedValues.includes(resource)) return false;
-      } else if (key === "operation" && operation !== undefined) {
+      } else if (key === 'operation' && operation !== undefined) {
         if (!allowedValues.includes(operation)) return false;
       }
       // Other show keys (e.g. based on another param value) can't be
@@ -120,9 +119,9 @@ function matchesDisplayOptions(
   // --- hide ---
   if (opts.hide) {
     for (const [key, hiddenValues] of Object.entries(opts.hide)) {
-      if (key === "resource" && resource !== undefined) {
+      if (key === 'resource' && resource !== undefined) {
         if (hiddenValues.includes(resource)) return false;
-      } else if (key === "operation" && operation !== undefined) {
+      } else if (key === 'operation' && operation !== undefined) {
         if (hiddenValues.includes(operation)) return false;
       }
     }
@@ -134,14 +133,14 @@ function matchesDisplayOptions(
 /**
  * Internal/meta parameter names that should be excluded from CLI-facing params.
  */
-const INTERNAL_PARAMS = new Set(["resource", "operation", "authentication"]);
+const INTERNAL_PARAMS = new Set(['resource', 'operation', 'authentication']);
 
 /**
  * Determine whether a property is a meta/internal selector that should be
  * excluded from CLI-facing parameters.
  */
 function isMetaProperty(prop: INodeProperties): boolean {
-  return INTERNAL_PARAMS.has(prop.name) || prop.type === "notice";
+  return INTERNAL_PARAMS.has(prop.name) || prop.type === 'notice';
 }
 
 /**
@@ -149,14 +148,14 @@ function isMetaProperty(prop: INodeProperties): boolean {
  * value.  Returns `undefined` when the inner value is empty so the parameter
  * won't appear as having a default.
  */
-const N8N_WIDGET_MODES = new Set(["list", "manual", "id", "url"]);
+const N8N_WIDGET_MODES = new Set(['list', 'manual', 'id', 'url']);
 
 function normalizeDefault(val: unknown): unknown {
-  if (val && typeof val === "object" && !Array.isArray(val)) {
+  if (val && typeof val === 'object' && !Array.isArray(val)) {
     const obj = val as Record<string, unknown>;
-    if ("mode" in obj && "value" in obj && N8N_WIDGET_MODES.has(String(obj.mode))) {
+    if ('mode' in obj && 'value' in obj && N8N_WIDGET_MODES.has(String(obj.mode))) {
       const v = obj.value;
-      return v === "" || v === null ? undefined : v;
+      return v === '' || v === null ? undefined : v;
     }
   }
   return val;
@@ -168,7 +167,7 @@ function normalizeDefault(val: unknown): unknown {
 function isPropertyOption(
   opt: INodePropertyOptions | INodeProperties | INodePropertyCollectionEntry,
 ): opt is INodePropertyOptions {
-  return "value" in opt && !("type" in opt);
+  return 'value' in opt && !('type' in opt);
 }
 
 /**
@@ -178,7 +177,7 @@ function extractOptions(
   prop: INodeProperties,
 ): Array<{ name: string; value: string | number | boolean }> | undefined {
   if (!prop.options || prop.options.length === 0) return undefined;
-  if (prop.type !== "options" && prop.type !== "multiOptions") return undefined;
+  if (prop.type !== 'options' && prop.type !== 'multiOptions') return undefined;
 
   const mapped: Array<{ name: string; value: string | number | boolean }> = [];
   for (const opt of prop.options) {
@@ -209,14 +208,17 @@ function inferHttpMethod(
 
   // Fallback: infer from the operation name
   const lower = operationValue.toLowerCase();
-  if (lower.startsWith("get") || lower === "list" || lower === "read" || lower === "search") return "GET";
-  if (lower.startsWith("create") || lower === "add" || lower === "insert" || lower === "send") return "POST";
-  if (lower.startsWith("update") || lower === "edit" || lower === "modify" || lower === "upsert") return "PUT";
-  if (lower.startsWith("patch")) return "PATCH";
-  if (lower.startsWith("delete") || lower === "remove" || lower === "destroy") return "DELETE";
+  if (lower.startsWith('get') || lower === 'list' || lower === 'read' || lower === 'search')
+    return 'GET';
+  if (lower.startsWith('create') || lower === 'add' || lower === 'insert' || lower === 'send')
+    return 'POST';
+  if (lower.startsWith('update') || lower === 'edit' || lower === 'modify' || lower === 'upsert')
+    return 'PUT';
+  if (lower.startsWith('patch')) return 'PATCH';
+  if (lower.startsWith('delete') || lower === 'remove' || lower === 'destroy') return 'DELETE';
 
   // Last resort: use requestDefaults
-  return desc.requestDefaults?.method ?? "GET";
+  return desc.requestDefaults?.method ?? 'GET';
 }
 
 /**
@@ -235,7 +237,7 @@ function inferPath(
       }
     }
   }
-  return desc.requestDefaults?.url ?? "/";
+  return desc.requestDefaults?.url ?? '/';
 }
 
 /**
@@ -245,11 +247,11 @@ function toNathanParameter(prop: INodeProperties): Parameter {
   return {
     name: prop.name,
     displayName: prop.displayName,
-    description: prop.description ?? "",
+    description: prop.description ?? '',
     type: mapParameterType(prop.type),
     required: prop.required ?? false,
     default: normalizeDefault(prop.default),
-    location: prop.routing?.send?.type === "query" ? "query" : "body",
+    location: prop.routing?.send?.type === 'query' ? 'query' : 'body',
     options: extractOptions(prop),
   };
 }
@@ -273,7 +275,7 @@ function collectScopedParameters(
     // For collection and fixedCollection, flatten their child values into
     // the parameter list so the CLI can present them individually.
     if (
-      (prop.type === "collection" || prop.type === "fixedCollection") &&
+      (prop.type === 'collection' || prop.type === 'fixedCollection') &&
       prop.options &&
       prop.options.length > 0
     ) {
@@ -283,13 +285,13 @@ function collectScopedParameters(
 
       // Additionally, walk children.
       for (const child of prop.options) {
-        if ("values" in child && Array.isArray((child as INodePropertyCollectionEntry).values)) {
+        if ('values' in child && Array.isArray((child as INodePropertyCollectionEntry).values)) {
           for (const sub of (child as INodePropertyCollectionEntry).values) {
             if (!isMetaProperty(sub)) {
               params.push(toNathanParameter(sub));
             }
           }
-        } else if ("type" in child) {
+        } else if ('type' in child) {
           // child is INodeProperties (nested inside a collection)
           params.push(toNathanParameter(child as INodeProperties));
         }
@@ -301,7 +303,6 @@ function collectScopedParameters(
 
   return params;
 }
-
 
 /**
  * Determine a description for the operation, preferring the option's
@@ -373,7 +374,7 @@ function adaptResourceOperationNode(
           path,
           parameters: params,
           output: {
-            format: "json",
+            format: 'json',
             description: `Result of ${humanise(operationValue)} on ${resourceDisplayName}`,
           },
           requiresAuth: (desc.credentials?.length ?? 0) > 0,
@@ -385,14 +386,14 @@ function adaptResourceOperationNode(
       // Resource exists but no operation property — single "execute".
       const params = collectScopedParameters(allProperties, resourceValue, undefined);
       operations.push({
-        name: "execute",
-        displayName: "Execute",
+        name: 'execute',
+        displayName: 'Execute',
         description: `Execute action on ${resourceDisplayName}`,
-        method: desc.requestDefaults?.method ?? "POST",
-        path: desc.requestDefaults?.url ?? "/",
+        method: desc.requestDefaults?.method ?? 'POST',
+        path: desc.requestDefaults?.url ?? '/',
         parameters: params,
         output: {
-          format: "json",
+          format: 'json',
           description: `Result of executing ${resourceDisplayName}`,
         },
         requiresAuth: (desc.credentials?.length ?? 0) > 0,
@@ -438,7 +439,7 @@ function adaptOperationOnlyNode(
       path,
       parameters: params,
       output: {
-        format: "json",
+        format: 'json',
         description: `Result of ${humanise(operationValue)}`,
       },
       requiresAuth: (desc.credentials?.length ?? 0) > 0,
@@ -448,7 +449,7 @@ function adaptOperationOnlyNode(
   if (operations.length > 0) {
     return [
       {
-        name: "default",
+        name: 'default',
         displayName: desc.displayName,
         description: desc.description,
         operations,
@@ -469,23 +470,23 @@ function adaptSinglePurposeNode(
   allProperties: INodeProperties[],
 ): Resource[] {
   const params = collectScopedParameters(allProperties, undefined, undefined);
-  const method: HttpMethod = desc.requestDefaults?.method ?? "POST";
+  const method: HttpMethod = desc.requestDefaults?.method ?? 'POST';
 
   return [
     {
-      name: "default",
+      name: 'default',
       displayName: desc.displayName,
       description: desc.description,
       operations: [
         {
-          name: "execute",
-          displayName: "Execute",
+          name: 'execute',
+          displayName: 'Execute',
           description: desc.description,
           method,
-          path: desc.requestDefaults?.url ?? "/",
+          path: desc.requestDefaults?.url ?? '/',
           parameters: params,
           output: {
-            format: "json",
+            format: 'json',
             description: `Result of executing ${desc.displayName}`,
           },
           requiresAuth: (desc.credentials?.length ?? 0) > 0,
@@ -516,17 +517,11 @@ function adaptSinglePurposeNode(
  *    non-meta properties are collected into a single resource with a
  *    single "execute" operation.
  */
-export function adaptNodeTypeDescription(
-  desc: INodeTypeDescription,
-): PluginDescriptor {
-  const resourceProp = desc.properties.find(
-    (p) => p.name === "resource" && p.type === "options",
-  );
-  const operationProp = desc.properties.find(
-    (p) => p.name === "operation" && p.type === "options",
-  );
+export function adaptNodeTypeDescription(desc: INodeTypeDescription): PluginDescriptor {
+  const resourceProp = desc.properties.find((p) => p.name === 'resource' && p.type === 'options');
+  const operationProp = desc.properties.find((p) => p.name === 'operation' && p.type === 'options');
   const allOperationProps = desc.properties.filter(
-    (p) => p.name === "operation" && p.type === "options",
+    (p) => p.name === 'operation' && p.type === 'options',
   );
 
   let resources: Resource[];
@@ -543,7 +538,7 @@ export function adaptNodeTypeDescription(
     name: cred.name,
     displayName: humanise(cred.name),
     type: inferCredentialType(cred.name),
-    fields: [],  // Fields would be populated from ICredentialType, not INodeTypeDescription
+    fields: [], // Fields would be populated from ICredentialType, not INodeTypeDescription
   }));
 
   return {
@@ -551,9 +546,8 @@ export function adaptNodeTypeDescription(
     displayName: desc.displayName,
     description: desc.description,
     version: resolveVersion(desc),
-    type: "adapted",
+    type: 'adapted',
     credentials,
     resources,
   };
 }
-

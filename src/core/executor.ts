@@ -10,9 +10,9 @@
  *   3. executeOperation  — orchestrator: validates URL, calls fetch, parses response
  */
 
-import type { Operation, Result, ResolvedCredentials } from "./plugin-interface.js";
-import { injectCredentials, validateUrlForCredentials } from "./credential-injector.js";
-import type { HttpClient } from "./http-client.js";
+import { injectCredentials, validateUrlForCredentials } from './credential-injector.js';
+import type { HttpClient } from './http-client.js';
+import type { Operation, Result, ResolvedCredentials } from './plugin-interface.js';
 
 export interface ExecutorOptions {
   /** Base URL for the API. */
@@ -59,7 +59,7 @@ function buildHttpRequest(
   let url = `${options.baseUrl}${operation.path}`;
   const queryParams = new URLSearchParams();
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    'Content-Type': 'application/json',
   };
 
   for (const param of operation.parameters) {
@@ -69,7 +69,7 @@ function buildHttpRequest(
         return {
           success: false,
           error: {
-            code: "MISSING_PARAM",
+            code: 'MISSING_PARAM',
             message: `Required parameter "${param.name}" is missing`,
           },
         };
@@ -78,16 +78,16 @@ function buildHttpRequest(
     }
 
     switch (param.location) {
-      case "path":
+      case 'path':
         url = url.replace(`{${param.name}}`, encodeURIComponent(String(value)));
         break;
-      case "query":
+      case 'query':
         queryParams.set(param.name, String(value));
         break;
-      case "header":
+      case 'header':
         headers[param.name] = String(value);
         break;
-      case "body":
+      case 'body':
         // Collected separately below
         break;
     }
@@ -96,12 +96,11 @@ function buildHttpRequest(
   // Build body from body-located parameters
   const bodyParams: Record<string, unknown> = {};
   for (const param of operation.parameters) {
-    if (param.location === "body" && params[param.name] !== undefined) {
+    if (param.location === 'body' && params[param.name] !== undefined) {
       bodyParams[param.name] = params[param.name];
     }
   }
-  const body =
-    Object.keys(bodyParams).length > 0 ? JSON.stringify(bodyParams) : undefined;
+  const body = Object.keys(bodyParams).length > 0 ? JSON.stringify(bodyParams) : undefined;
 
   return { url, headers, body, queryParams };
 }
@@ -117,10 +116,7 @@ function buildHttpRequest(
  * headers and query parameters into the request. The original request object
  * is mutated in place for efficiency (it is an intermediate internal value).
  */
-function applyCredentialInjection(
-  request: HttpRequest,
-  credentials: ResolvedCredentials[],
-): void {
+function applyCredentialInjection(request: HttpRequest, credentials: ResolvedCredentials[]): void {
   const injection = injectCredentials(credentials);
 
   for (const [key, value] of Object.entries(injection.headers)) {
@@ -140,7 +136,7 @@ function applyCredentialInjection(
 
 /** Type guard: distinguish an error Result from a valid HttpRequest. */
 function isErrorResult(value: HttpRequest | Result): value is Result {
-  return "success" in value;
+  return 'success' in value;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +154,13 @@ export async function executeOperation(
   params: Record<string, unknown>,
   options: ExecutorOptions,
 ): Promise<Result> {
-  const { baseUrl, credentials = [], timeout = 30_000, allowHttp = false, httpClient = fetch } = options;
+  const {
+    baseUrl,
+    credentials = [],
+    timeout = 30_000,
+    allowHttp = false,
+    httpClient = fetch,
+  } = options;
 
   // --- 1. Build the request ---
   const requestOrError = buildHttpRequest(operation, params, { baseUrl });
@@ -182,7 +184,7 @@ export async function executeOperation(
     if (urlError) {
       return {
         success: false,
-        error: { code: "INSECURE_TRANSPORT", message: urlError },
+        error: { code: 'INSECURE_TRANSPORT', message: urlError },
       };
     }
   }
@@ -205,8 +207,8 @@ export async function executeOperation(
     });
 
     let data: unknown;
-    const contentType = response.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
+    const contentType = response.headers.get('content-type') ?? '';
+    if (contentType.includes('application/json')) {
       data = await response.json();
     } else {
       data = await response.text();
@@ -242,7 +244,7 @@ export async function executeOperation(
     return {
       success: false,
       error: {
-        code: "REQUEST_FAILED",
+        code: 'REQUEST_FAILED',
         message: error instanceof Error ? error.message : String(error),
       },
       metadata: { duration },
