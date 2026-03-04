@@ -37,8 +37,8 @@ Every service follows the same pattern: **discover** what's available, **describ
 ### 1. Discover services
 
 ```bash
-nathan discover                 # JSON output (default)
-nathan discover --human         # Formatted table
+nathan discover                 # Human-readable output (default)
+nathan discover --json          # JSON output
 ```
 
 ### 2. Describe a service
@@ -61,7 +61,7 @@ nathan jsonplaceholder post list --_limit=5
 nathan jsonplaceholder post create --title="Hello" --body="World" --userId=1
 ```
 
-Output is JSON by default. Add `--human` for readable tables and colored output, or `--limit=N` to truncate long result lists.
+Output is human-readable by default for `discover` and `describe`. Add `--json` for machine-readable JSON. Execution commands (`nathan <service> ...`) output JSON by default — add `--human` for formatted tables. Use `--limit=N` to truncate long result lists.
 
 ## Authentication
 

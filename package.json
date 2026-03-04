@@ -1,6 +1,7 @@
 {
   "name": "nathan-cli",
   "version": "0.1.2",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "nathan": "./dist/nathan"
