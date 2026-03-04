@@ -1,6 +1,0 @@
-{
-  "name": "n8n-core",
-  "version": "0.0.0-stub",
-  "main": "index.js",
-  "description": "Stub for nathan CLI — minimal exports so n8n-nodes-base can load"
-}

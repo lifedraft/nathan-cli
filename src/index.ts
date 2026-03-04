@@ -30,6 +30,32 @@ import { discoverN8nNodes } from './n8n-compat/discovery.js';
 import { loadN8nNodeFromPath, validateModulePath } from './n8n-compat/loader.js';
 
 // ---------------------------------------------------------------------------
+// Stub n8n-core so n8n-nodes-base can load without the full dependency tree.
+// This replaces the old postinstall script that copied a stub to node_modules.
+// ---------------------------------------------------------------------------
+
+import { plugin } from 'bun';
+
+plugin({
+  name: 'n8n-core-stub',
+  setup(build) {
+    build.module('n8n-core', () => ({
+      exports: {
+        getWebhookSandboxCSP() {
+          return '';
+        },
+        ErrorReporter: {
+          error() {},
+          warn() {},
+          info() {},
+        },
+      },
+      loader: 'object',
+    }));
+  },
+});
+
+// ---------------------------------------------------------------------------
 // Register n8n-compat loader strategy
 // ---------------------------------------------------------------------------
 
