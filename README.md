@@ -51,6 +51,8 @@ nathan describe github repository            # What can I do with repos?
 nathan describe github repository get        # What parameters does "get" need?
 ```
 
+Each level shows progressively more detail — available resources, operations, parameters with types, required fields, and authentication info.
+
 ### 3. Execute
 
 ```bash
@@ -59,7 +61,7 @@ nathan jsonplaceholder post list --_limit=5
 nathan jsonplaceholder post create --title="Hello" --body="World" --userId=1
 ```
 
-Output is JSON by default. Use `--human` for readable formatting.
+Output is JSON by default. Add `--human` for readable tables and colored output, or `--limit=N` to truncate long result lists.
 
 ## Authentication
 
@@ -69,15 +71,20 @@ Credentials are passed via environment variables and automatically injected into
 NATHAN_GITHUB_TOKEN=ghp_xxx nathan github repository get --owner=torvalds --repository=linux
 ```
 
-The lookup order is: `NATHAN_<SERVICE>_TOKEN` → `<SERVICE>_TOKEN` → `NATHAN_<SERVICE>_API_KEY` → `<SERVICE>_API_KEY`.
+The lookup order is:
 
-Run `nathan describe <service>` to see which environment variables a service accepts.
+1. `NATHAN_<SERVICE>_TOKEN`
+2. `<SERVICE>_TOKEN`
+3. `NATHAN_<SERVICE>_API_KEY`
+4. `<SERVICE>_API_KEY`
+
+Run `nathan describe <service>` to see which environment variables a service accepts and whether credentials are configured.
 
 ## Adding Services
 
 ### YAML plugins
 
-The simplest way to add a new service. Create a `.yaml` file in `plugins/`:
+The simplest way to add a new service. Create a `.yaml` file in `~/.nathan/plugins/` or the built-in `plugins/` directory:
 
 ```yaml
 name: jsonplaceholder
@@ -116,16 +123,9 @@ resources:
 
 ### n8n nodes
 
-Nathan auto-discovers all 400+ nodes from `n8n-nodes-base` at runtime — no configuration needed.
+Nathan auto-discovers all 400+ nodes from `n8n-nodes-base` at runtime — no configuration needed. Nodes are loaded lazily on first use, so startup stays fast.
 
-If you installed nathan via `npm install -g` or `bun install -g`, the n8n packages are already included as dependencies. Run `nathan discover` to see all available services.
-
-If you installed via Homebrew or binary download, install the n8n packages separately:
-
-```bash
-bun install -g n8n-nodes-base n8n-workflow
-# or: npm install -g n8n-nodes-base n8n-workflow
-```
+If you installed via `npm install -g` or `bun install -g`, the n8n packages are already included as peer dependencies. Run `nathan discover` to see all available services.
 
 You can also point to individual n8n nodes with a two-line YAML manifest in `plugins/`:
 
@@ -136,7 +136,12 @@ module: n8n-nodes-base/dist/nodes/Github/Github.node.js
 
 ### Plugin directories
 
-Set `NATHAN_PLUGIN_DIRS` (colon-separated paths) to load plugins from additional directories beyond the built-in `plugins/` folder.
+Nathan searches for plugins in:
+
+1. Built-in `plugins/` directory (ships with nathan)
+2. `~/.nathan/plugins/` (user plugins)
+
+Set `NATHAN_PLUGIN_DIRS` (colon-separated paths) to load plugins from additional directories.
 
 ## Configuration
 
@@ -145,6 +150,7 @@ Set `NATHAN_PLUGIN_DIRS` (colon-separated paths) to load plugins from additional
 | `NATHAN_<SERVICE>_TOKEN` | Credentials for a service |
 | `NATHAN_PLUGIN_DIRS` | Additional plugin directories (colon-separated) |
 | `NATHAN_DEBUG` | Enable verbose logging |
+| `NATHAN_ALLOW_HTTP` | Allow HTTP URLs when credentials are present (default: HTTPS only) |
 
 ## License
 
