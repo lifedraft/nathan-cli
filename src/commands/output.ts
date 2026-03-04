@@ -149,24 +149,3 @@ function formatObject(obj: Record<string, unknown>): string {
   return lines.join('\n');
 }
 
-/**
- * Print an error in a consistent format.
- */
-export function printError(message: string, options: OutputOptions = {}): void {
-  if (options.human) {
-    console.error(chalk.red.bold('Error:'), chalk.red(message));
-  } else {
-    console.error(JSON.stringify({ error: message }));
-  }
-}
-
-/**
- * Print a success message.
- */
-export function printSuccess(message: string, options: OutputOptions = {}): void {
-  if (options.human) {
-    console.log(chalk.green.bold('OK:'), chalk.green(message));
-  } else {
-    console.log(JSON.stringify({ status: 'ok', message }));
-  }
-}

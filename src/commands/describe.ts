@@ -10,16 +10,8 @@ import {
   type Resource,
 } from '../core/plugin-interface.js';
 import { registry } from '../core/registry-instance.js';
+import { bold, header } from './format.js';
 import { printOutput } from './output.js';
-
-// Clipanion-style rich formatting (matches --help output)
-const MAX_LINE_LENGTH = 80;
-const richLine = Array(MAX_LINE_LENGTH).fill('━');
-for (let t = 0; t <= 24; ++t) richLine[richLine.length - t] = `\x1b[38;5;${232 + t}m━`;
-
-const header = (str: string): string =>
-  `\x1b[1m━━━ ${str}${str.length < MAX_LINE_LENGTH - 5 ? ` ${richLine.slice(str.length + 5).join('')}` : ':'}\x1b[0m`;
-const bold = (str: string): string => `\x1b[1m${str}\x1b[22m`;
 
 /**
  * Format a single operation as a usage line:
@@ -35,6 +27,14 @@ function formatUsageLine(service: string, resource: string, op: Operation): stri
     }
   }
   return `  ${bold('$ ')}${parts.join(' ')}`;
+}
+
+function formatOperationLines(lines: string[], service: string, resourceName: string, ops: Operation[]): void {
+  for (const op of ops) {
+    lines.push(`  ${bold(op.name)}  ${op.description}`);
+    lines.push(formatUsageLine(service, resourceName, op));
+    lines.push('');
+  }
 }
 
 /**
@@ -56,11 +56,7 @@ function formatServiceCompact(service: string, descriptor: PluginDescriptor): st
   for (const res of descriptor.resources) {
     lines.push(header(res.name));
     lines.push('');
-    for (const op of res.operations) {
-      lines.push(`  ${bold(`${op.name}`)}  ${op.description}`);
-      lines.push(formatUsageLine(service, res.name, op));
-      lines.push('');
-    }
+    formatOperationLines(lines, service, res.name, res.operations);
   }
 
   return lines.join('\n').trimEnd();
@@ -73,13 +69,7 @@ function formatResourceCompact(service: string, res: Resource): string {
   const lines: string[] = [];
   lines.push(header(`${res.displayName} — ${res.description}`));
   lines.push('');
-
-  for (const op of res.operations) {
-    lines.push(`  ${bold(`${op.name}`)}  ${op.description}`);
-    lines.push(formatUsageLine(service, res.name, op));
-    lines.push('');
-  }
-
+  formatOperationLines(lines, service, res.name, res.operations);
   return lines.join('\n').trimEnd();
 }
 
@@ -115,6 +105,28 @@ function formatOperationCompact(service: string, resource: string, op: Operation
   return lines.join('\n');
 }
 
+function buildAuthInfo(descriptor: PluginDescriptor) {
+  const required = descriptor.credentials.length > 0;
+  return {
+    required,
+    configured: required ? hasConfiguredCredentials(descriptor) : false,
+    env_vars: required ? getExpectedEnvVarNames(descriptor.name) : [],
+  };
+}
+
+function printError(error: { code: string; message: string; [key: string]: unknown }, json: boolean): void {
+  if (json) {
+    printOutput({ error });
+  } else {
+    console.error(`Error: ${error.message}`);
+    if ('suggestion' in error) console.error(String(error.suggestion));
+    if ('available' in error && Array.isArray(error.available)) {
+      console.error(`Available: ${error.available.join(', ')}`);
+    }
+  }
+  process.exitCode = 1;
+}
+
 export class DescribeCommand extends Command {
   static override paths = [['describe']];
 
@@ -138,30 +150,25 @@ export class DescribeCommand extends Command {
   async execute(): Promise<void> {
     const plugin = await registry.getOrLoad(this.service);
     if (!plugin) {
-      printOutput({
-        error: {
+      printError(
+        {
           code: 'PLUGIN_NOT_FOUND',
           message: `Plugin "${this.service}" not found`,
           suggestion: "Run 'nathan discover' to see available plugins",
         },
-      });
-      process.exitCode = 1;
+        this.json,
+      );
       return;
     }
 
     if (!this.resource) {
       if (this.json) {
-        const authRequired = plugin.descriptor.credentials.length > 0;
         printOutput({
           name: plugin.descriptor.name,
           displayName: plugin.descriptor.displayName,
           description: plugin.descriptor.description,
           version: plugin.descriptor.version,
-          auth: {
-            required: authRequired,
-            configured: authRequired ? hasConfiguredCredentials(plugin.descriptor) : false,
-            env_vars: authRequired ? getExpectedEnvVarNames(plugin.descriptor.name) : [],
-          },
+          auth: buildAuthInfo(plugin.descriptor),
           resources: plugin.descriptor.resources.map((r) => ({
             name: r.name,
             displayName: r.displayName,
@@ -174,16 +181,17 @@ export class DescribeCommand extends Command {
       return;
     }
 
-    const res = findResource(plugin.descriptor, this.resource as string);
+    const resourceName = this.resource;
+    const res = findResource(plugin.descriptor, resourceName);
     if (!res) {
-      printOutput({
-        error: {
+      printError(
+        {
           code: 'RESOURCE_NOT_FOUND',
-          message: `Resource "${this.resource}" not found in "${this.service}"`,
+          message: `Resource "${resourceName}" not found in "${this.service}"`,
           available: plugin.descriptor.resources.map((r) => r.name),
         },
-      });
-      process.exitCode = 1;
+        this.json,
+      );
       return;
     }
 
@@ -214,23 +222,23 @@ export class DescribeCommand extends Command {
       return;
     }
 
-    const op = findOperation(res, this.operation as string);
+    const operationName = this.operation;
+    const op = findOperation(res, operationName);
     if (!op) {
-      printOutput({
-        error: {
+      printError(
+        {
           code: 'OPERATION_NOT_FOUND',
-          message: `Operation "${this.operation}" not found on "${this.resource}"`,
+          message: `Operation "${operationName}" not found on "${resourceName}"`,
           available: res.operations.map((o) => o.name),
         },
-      });
-      process.exitCode = 1;
+        this.json,
+      );
       return;
     }
 
     if (this.json) {
-      const authRequired = plugin.descriptor.credentials.length > 0;
       printOutput({
-        command: `nathan ${this.service} ${this.resource} ${this.operation}`,
+        command: `nathan ${this.service} ${resourceName} ${operationName}`,
         description: op.description,
         method: op.method,
         parameters: op.parameters.map((p) => ({
@@ -241,11 +249,7 @@ export class DescribeCommand extends Command {
           default: p.default,
           location: p.location,
         })),
-        auth: {
-          required: authRequired,
-          configured: authRequired ? hasConfiguredCredentials(plugin.descriptor) : false,
-          env_vars: authRequired ? getExpectedEnvVarNames(plugin.descriptor.name) : [],
-        },
+        auth: buildAuthInfo(plugin.descriptor),
       });
     } else {
       console.log(formatOperationCompact(this.service, res.name, op));
