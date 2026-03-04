@@ -1,6 +1,6 @@
 {
   "name": "nathan-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "bin": {
     "nathan": "./dist/nathan"
@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "build": "bun build src/index.ts --outfile dist/nathan --target bun",
+    "prepublishOnly": "bun run build",
     "test": "bun test",
     "lint": "oxlint src/",
     "lint:fix": "oxlint --fix src/",
