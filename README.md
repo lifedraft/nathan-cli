@@ -20,14 +20,6 @@ bun install -g nathan-cli
 npm install -g nathan-cli
 ```
 
-### Homebrew
-
-```bash
-brew install lifedraft/tap/nathan
-```
-
-Then install the n8n nodes separately (see [n8n nodes](#n8n-nodes) below).
-
 ### Build from source
 
 ```bash
