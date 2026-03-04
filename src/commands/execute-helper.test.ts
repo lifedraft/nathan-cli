@@ -1,28 +1,23 @@
-import { describe, test, expect, beforeEach, afterEach, spyOn, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 
-import type { checkCredentialsConfigured } from '../core/credential-resolver.js';
-import type {
-  Plugin,
-  PluginDescriptor,
-  Operation,
-  ResolvedCredentials,
-} from '../core/plugin-interface.js';
+import type { Plugin, PluginDescriptor, Operation } from '../core/plugin-interface.js';
+import { executePluginOperation, type CredentialDeps } from './execute-helper.js';
 
 // ---------------------------------------------------------------------------
-// Mocks — state-based so individual tests can override behavior
+// Mocks — state-based so individual tests can override behavior.
+// Uses dependency injection instead of mock.module to avoid contaminating
+// the credential-resolver module for other test files.
 // ---------------------------------------------------------------------------
 
-let mockResolve: () => Promise<ResolvedCredentials[]> = async () => [
+let mockResolve: CredentialDeps['resolveCredentialsForPlugin'] = async () => [
   { typeName: 'test', primarySecret: 'tok', fields: {} },
 ];
-let mockCheck: () => ReturnType<typeof checkCredentialsConfigured> = () => null;
+let mockCheck: CredentialDeps['checkCredentialsConfigured'] = () => null;
 
-mock.module('../core/credential-resolver.js', () => ({
-  resolveCredentialsForPlugin: () => mockResolve(),
-  checkCredentialsConfigured: () => mockCheck(),
-}));
-
-import { executePluginOperation } from './execute-helper.js';
+const mockDeps: CredentialDeps = {
+  resolveCredentialsForPlugin: (...args) => mockResolve(...args),
+  checkCredentialsConfigured: (...args) => mockCheck(...args),
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -110,14 +105,10 @@ describe('executePluginOperation', () => {
 
   test('success (json: false) → human output on stdout, no exitCode', async () => {
     const plugin = makePlugin(async () => ({ success: true, data: { id: 1, name: 'thing' } }));
-    await executePluginOperation({
-      plugin,
-      resource: 'items',
-      operation: 'list',
-      op: makeOp(),
-      rawArgs: [],
-      json: false,
-    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op: makeOp(), rawArgs: [], json: false },
+      mockDeps,
+    );
 
     expect(stdout()).toContain('name');
     expect(stdout()).toContain('thing');
@@ -127,14 +118,10 @@ describe('executePluginOperation', () => {
   test('success (json: true) → JSON on stdout', async () => {
     const data = { id: 1, items: [1, 2, 3] };
     const plugin = makePlugin(async () => ({ success: true, data }));
-    await executePluginOperation({
-      plugin,
-      resource: 'items',
-      operation: 'list',
-      op: makeOp(),
-      rawArgs: [],
-      json: true,
-    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op: makeOp(), rawArgs: [], json: true },
+      mockDeps,
+    );
 
     const parsed = JSON.parse(stdout());
     expect(parsed).toEqual(data);
@@ -157,14 +144,10 @@ describe('executePluginOperation', () => {
       ],
     });
     const plugin = makePlugin(undefined, makeDescriptor());
-    await executePluginOperation({
-      plugin,
-      resource: 'items',
-      operation: 'list',
-      op,
-      rawArgs: [], // no --owner provided
-      json: false,
-    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op, rawArgs: [], json: false },
+      mockDeps,
+    );
 
     expect(stderr()).toContain('Missing required');
     expect(stderr()).toContain('owner');
@@ -186,14 +169,10 @@ describe('executePluginOperation', () => {
       ],
     });
     const plugin = makePlugin(undefined, makeDescriptor());
-    await executePluginOperation({
-      plugin,
-      resource: 'items',
-      operation: 'list',
-      op,
-      rawArgs: [],
-      json: true,
-    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op, rawArgs: [], json: true },
+      mockDeps,
+    );
 
     const parsed = JSON.parse(stderr());
     expect(parsed.error.code).toBe('MISSING_PARAM');
@@ -225,14 +204,10 @@ describe('executePluginOperation', () => {
     });
     const plugin = makePlugin(undefined, descriptor);
 
-    await executePluginOperation({
-      plugin,
-      resource: 'items',
-      operation: 'list',
-      op: makeOp(),
-      rawArgs: [],
-      json: false,
-    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op: makeOp(), rawArgs: [], json: false },
+      mockDeps,
+    );
 
     expect(stderr()).toContain('Authentication required');
     expect(process.exitCode).toBe(1);
@@ -245,14 +220,10 @@ describe('executePluginOperation', () => {
       success: false,
       error: { code: 'HTTP_ERROR', message: 'Not Found' },
     }));
-    await executePluginOperation({
-      plugin,
-      resource: 'items',
-      operation: 'list',
-      op: makeOp(),
-      rawArgs: [],
-      json: false,
-    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op: makeOp(), rawArgs: [], json: false },
+      mockDeps,
+    );
 
     expect(stderr()).toContain('Not Found');
     expect(process.exitCode).toBe(1);
@@ -263,14 +234,10 @@ describe('executePluginOperation', () => {
       success: false,
       error: { code: 'HTTP_ERROR', message: 'Not Found' },
     }));
-    await executePluginOperation({
-      plugin,
-      resource: 'items',
-      operation: 'list',
-      op: makeOp(),
-      rawArgs: [],
-      json: true,
-    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op: makeOp(), rawArgs: [], json: true },
+      mockDeps,
+    );
 
     const parsed = JSON.parse(stderr());
     expect(parsed.error.code).toBe('HTTP_ERROR');
@@ -294,14 +261,10 @@ describe('executePluginOperation', () => {
       ],
     });
     const plugin = makePlugin(undefined, makeDescriptor());
-    await executePluginOperation({
-      plugin,
-      resource: 'items',
-      operation: 'list',
-      op,
-      rawArgs: [],
-      json: false,
-    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op, rawArgs: [], json: false },
+      mockDeps,
+    );
 
     const err = stderr();
     expect(err).toContain('test-svc');

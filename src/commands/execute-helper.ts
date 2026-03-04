@@ -6,26 +6,45 @@
  */
 
 import {
-  resolveCredentialsForPlugin,
-  checkCredentialsConfigured,
+  resolveCredentialsForPlugin as _resolveCredentials,
+  checkCredentialsConfigured as _checkCredentials,
 } from '../core/credential-resolver.js';
 import { parseFlags, extractLimit } from '../core/flag-parser.js';
 import { validateParameters } from '../core/parameter-validator.js';
-import type { Plugin, Operation } from '../core/plugin-interface.js';
+import type {
+  Plugin,
+  Operation,
+  ResolvedCredentials,
+  PluginDescriptor,
+} from '../core/plugin-interface.js';
 import { printOutput, printError } from './output.js';
+
+/** Injectable credential functions (for testing without mock.module). */
+export interface CredentialDeps {
+  resolveCredentialsForPlugin: typeof _resolveCredentials;
+  checkCredentialsConfigured: typeof _checkCredentials;
+}
+
+const defaultDeps: CredentialDeps = {
+  resolveCredentialsForPlugin: _resolveCredentials,
+  checkCredentialsConfigured: _checkCredentials,
+};
 
 /**
  * Execute a plugin operation with full validation, credential checks, and output.
  * Sets process.exitCode = 1 on failure.
  */
-export async function executePluginOperation(opts: {
-  plugin: Plugin;
-  resource: string;
-  operation: string;
-  op: Operation;
-  rawArgs: string[];
-  json: boolean;
-}): Promise<void> {
+export async function executePluginOperation(
+  opts: {
+    plugin: Plugin;
+    resource: string;
+    operation: string;
+    op: Operation;
+    rawArgs: string[];
+    json: boolean;
+  },
+  deps: CredentialDeps = defaultDeps,
+): Promise<void> {
   const { plugin, resource, operation, op, rawArgs, json } = opts;
 
   const params = parseFlags(rawArgs);
@@ -40,9 +59,9 @@ export async function executePluginOperation(opts: {
     return;
   }
 
-  const credentials = await resolveCredentialsForPlugin(plugin.descriptor);
+  const credentials = await deps.resolveCredentialsForPlugin(plugin.descriptor);
 
-  const credError = checkCredentialsConfigured(plugin.descriptor, credentials);
+  const credError = deps.checkCredentialsConfigured(plugin.descriptor, credentials);
   if (credError) {
     printError(credError.error, { json, hint: credError.error.env_vars.join(', ') });
     process.exitCode = 1;
