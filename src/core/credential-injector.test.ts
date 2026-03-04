@@ -103,7 +103,7 @@ describe('applyCredentialAuth', () => {
     const credValues = { apiKey: 'key-abc-123' };
     const result = applyCredentialAuth(credValues, config);
     expect(result.queryParams).toBeDefined();
-    expect(result.queryParams!['api_key']).toBe('key-abc-123');
+    expect(result.queryParams?.['api_key']).toBe('key-abc-123');
   });
 
   test('with CredentialAuthConfig containing basicAuth', () => {

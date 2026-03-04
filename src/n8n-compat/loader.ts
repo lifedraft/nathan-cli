@@ -138,7 +138,7 @@ export async function loadN8nNodeFromPath(modulePath: string): Promise<Plugin> {
   if (!instance.description?.name || !Array.isArray(instance.description?.properties)) {
     // Handle versioned nodes (e.g., Postgres, MySQL, Slack)
     if (instance.nodeVersions && typeof instance.nodeVersions === 'object') {
-      const versions = Object.keys(instance.nodeVersions).sort((a, b) => Number(a) - Number(b));
+      const versions = Object.keys(instance.nodeVersions).toSorted((a, b) => Number(a) - Number(b));
       const latestKey = versions[versions.length - 1];
       const latestNode = instance.nodeVersions[latestKey];
       if (latestNode?.description?.properties) {
@@ -150,7 +150,7 @@ export async function loadN8nNodeFromPath(modulePath: string): Promise<Plugin> {
 
   // Handle versioned nodes (e.g., Postgres, MySQL, Slack)
   if (instance.nodeVersions && typeof instance.nodeVersions === 'object') {
-    const versions = Object.keys(instance.nodeVersions).sort((a, b) => Number(a) - Number(b));
+    const versions = Object.keys(instance.nodeVersions).toSorted((a, b) => Number(a) - Number(b));
     const latestKey = versions[versions.length - 1];
     const latestNode = instance.nodeVersions[latestKey];
     if (latestNode?.description?.properties) {

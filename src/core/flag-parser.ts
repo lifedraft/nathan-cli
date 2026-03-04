@@ -59,8 +59,29 @@ export function extractLimit(params: Record<string, FlagValue>): number | undefi
   const raw = params.limit;
   delete params.limit;
   if (raw === undefined || raw === true) return undefined;
-  const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+}
+
+/**
+ * Extract the --json flag from proxy args (Option.Proxy swallows all flags).
+ * Handles --json, --json=true, --json=false, and --json true/false (space-separated).
+ * Returns [jsonFlag, cleanedArgs].
+ */
+export function extractJsonFlag(args: string[]): [boolean, string[]] {
+  let json = false;
+  const cleaned: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--json' || a === '--json=true') {
+      json = true;
+    } else if (a === '--json=false') {
+      // consume and leave json as false
+    } else {
+      cleaned.push(a);
+    }
+  }
+  return [json, cleaned];
 }
 
 /**

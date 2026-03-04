@@ -28,12 +28,12 @@ describe('loadCredentialType', () => {
   test('loads githubApi credential type', () => {
     const info = loadCredentialType('githubApi');
     expect(info).toBeTruthy();
-    expect(info!.name).toBe('githubApi');
-    expect(info!.properties.length).toBeGreaterThan(0);
+    expect(info?.name).toBe('githubApi');
+    expect(info?.properties.length).toBeGreaterThan(0);
     // Should have accessToken field
-    const accessTokenField = info!.properties.find((p) => p.name === 'accessToken');
+    const accessTokenField = info?.properties.find((p) => p.name === 'accessToken');
     expect(accessTokenField).toBeTruthy();
-    expect(accessTokenField!.isPassword).toBe(true);
+    expect(accessTokenField?.isPassword).toBe(true);
   });
 
   test('returns null for unknown credential types', () => {

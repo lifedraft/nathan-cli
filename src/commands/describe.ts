@@ -11,7 +11,7 @@ import {
 } from '../core/plugin-interface.js';
 import { registry } from '../core/registry-instance.js';
 import { bold, header } from './format.js';
-import { printOutput } from './output.js';
+import { printOutput, printError } from './output.js';
 
 /**
  * Format a single operation as a usage line:
@@ -119,22 +119,6 @@ function buildAuthInfo(descriptor: PluginDescriptor) {
   };
 }
 
-function printError(
-  error: { code: string; message: string; [key: string]: unknown },
-  json: boolean,
-): void {
-  if (json) {
-    printOutput({ error });
-  } else {
-    console.error(`Error: ${error.message}`);
-    if ('suggestion' in error) console.error(String(error.suggestion));
-    if ('available' in error && Array.isArray(error.available)) {
-      console.error(`Available: ${error.available.join(', ')}`);
-    }
-  }
-  process.exitCode = 1;
-}
-
 export class DescribeCommand extends Command {
   static override paths = [['describe']];
 
@@ -152,7 +136,7 @@ export class DescribeCommand extends Command {
   operation = Option.String({ required: false, name: 'operation' });
 
   json = Option.Boolean('--json', false, {
-    description: 'Output in JSON format',
+    description: 'Output in JSON format (default: human-readable)',
   });
 
   async execute(): Promise<void> {
@@ -164,25 +148,29 @@ export class DescribeCommand extends Command {
           message: `Plugin "${this.service}" not found`,
           suggestion: "Run 'nathan discover' to see available plugins",
         },
-        this.json,
+        { json: this.json },
       );
+      process.exitCode = 1;
       return;
     }
 
     if (!this.resource) {
       if (this.json) {
-        printOutput({
-          name: plugin.descriptor.name,
-          displayName: plugin.descriptor.displayName,
-          description: plugin.descriptor.description,
-          version: plugin.descriptor.version,
-          auth: buildAuthInfo(plugin.descriptor),
-          resources: plugin.descriptor.resources.map((r) => ({
-            name: r.name,
-            displayName: r.displayName,
-            operations: r.operations.map((o) => o.name),
-          })),
-        });
+        printOutput(
+          {
+            name: plugin.descriptor.name,
+            displayName: plugin.descriptor.displayName,
+            description: plugin.descriptor.description,
+            version: plugin.descriptor.version,
+            auth: buildAuthInfo(plugin.descriptor),
+            resources: plugin.descriptor.resources.map((r) => ({
+              name: r.name,
+              displayName: r.displayName,
+              operations: r.operations.map((o) => o.name),
+            })),
+          },
+          { json: true },
+        );
       } else {
         console.log(formatServiceCompact(this.service, plugin.descriptor));
       }
@@ -192,38 +180,43 @@ export class DescribeCommand extends Command {
     const resourceName = this.resource;
     const res = findResource(plugin.descriptor, resourceName);
     if (!res) {
+      const available = plugin.descriptor.resources.map((r) => r.name);
       printError(
         {
           code: 'RESOURCE_NOT_FOUND',
           message: `Resource "${resourceName}" not found in "${this.service}"`,
-          available: plugin.descriptor.resources.map((r) => r.name),
+          available,
         },
-        this.json,
+        { json: this.json, hint: `Available: ${available.join(', ')}` },
       );
+      process.exitCode = 1;
       return;
     }
 
     if (!this.operation) {
       if (this.json) {
-        printOutput({
-          service: this.service,
-          resource: res.name,
-          displayName: res.displayName,
-          description: res.description,
-          operations: res.operations.map((o) => ({
-            name: o.name,
-            displayName: o.displayName,
-            description: o.description,
-            method: o.method,
-            parameters: o.parameters.map((p) => ({
-              name: p.name,
-              type: p.type,
-              required: p.required,
-              description: p.description,
-              ...(p.default !== undefined ? { default: p.default } : {}),
+        printOutput(
+          {
+            service: this.service,
+            resource: res.name,
+            displayName: res.displayName,
+            description: res.description,
+            operations: res.operations.map((o) => ({
+              name: o.name,
+              displayName: o.displayName,
+              description: o.description,
+              method: o.method,
+              parameters: o.parameters.map((p) => ({
+                name: p.name,
+                type: p.type,
+                required: p.required,
+                description: p.description,
+                ...(p.default !== undefined ? { default: p.default } : {}),
+              })),
             })),
-          })),
-        });
+          },
+          { json: true },
+        );
       } else {
         console.log(formatResourceCompact(this.service, res));
       }
@@ -233,32 +226,37 @@ export class DescribeCommand extends Command {
     const operationName = this.operation;
     const op = findOperation(res, operationName);
     if (!op) {
+      const available = res.operations.map((o) => o.name);
       printError(
         {
           code: 'OPERATION_NOT_FOUND',
           message: `Operation "${operationName}" not found on "${resourceName}"`,
-          available: res.operations.map((o) => o.name),
+          available,
         },
-        this.json,
+        { json: this.json, hint: `Available: ${available.join(', ')}` },
       );
+      process.exitCode = 1;
       return;
     }
 
     if (this.json) {
-      printOutput({
-        command: `nathan ${this.service} ${resourceName} ${operationName}`,
-        description: op.description,
-        method: op.method,
-        parameters: op.parameters.map((p) => ({
-          name: p.name,
-          type: p.type,
-          required: p.required,
-          description: p.description,
-          default: p.default,
-          location: p.location,
-        })),
-        auth: buildAuthInfo(plugin.descriptor),
-      });
+      printOutput(
+        {
+          command: `nathan ${this.service} ${resourceName} ${operationName}`,
+          description: op.description,
+          method: op.method,
+          parameters: op.parameters.map((p) => ({
+            name: p.name,
+            type: p.type,
+            required: p.required,
+            description: p.description,
+            default: p.default,
+            location: p.location,
+          })),
+          auth: buildAuthInfo(plugin.descriptor),
+        },
+        { json: true },
+      );
     } else {
       console.log(formatOperationCompact(this.service, res.name, op));
     }

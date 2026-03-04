@@ -16,7 +16,7 @@ export class DiscoverCommand extends Command {
   });
 
   json = Option.Boolean('--json', false, {
-    description: 'Output in JSON format',
+    description: 'Output in JSON format (default: human-readable)',
   });
 
   async execute(): Promise<void> {
@@ -41,7 +41,7 @@ export class DiscoverCommand extends Command {
 
       const lazyEntries = availableNames.map((name) => ({ name, loaded: false }));
 
-      printOutput({ plugins: [...loaded, ...lazyEntries] });
+      printOutput({ plugins: [...loaded, ...lazyEntries] }, { json: true });
       return;
     }
 

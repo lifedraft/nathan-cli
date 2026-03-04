@@ -70,7 +70,7 @@ export function createPluginRegistry(): PluginRegistry {
     },
     getAllNames() {
       const names = new Set([...loaded.keys(), ...lazy.keys()]);
-      return Array.from(names).sort();
+      return Array.from(names).toSorted();
     },
     has(name) {
       return loaded.has(name) || lazy.has(name);

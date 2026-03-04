@@ -88,13 +88,12 @@ const config = loadConfig();
 
 try {
   for (const dir of config.pluginDirs) {
+    // eslint-disable-next-line no-await-in-loop -- sequential: plugin dirs may depend on load order
     await loadPluginsFromDir(dir, registry);
   }
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err);
-  console.error(
-    JSON.stringify({ error: { code: 'STARTUP_ERROR', message: `Failed to load plugins: ${msg}` } }),
-  );
+  console.error(`Error: Failed to load plugins: ${msg}`);
   process.exit(1);
 }
 

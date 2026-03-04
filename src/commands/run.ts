@@ -1,9 +1,10 @@
 import { Command, Option } from 'clipanion';
 
+import { extractJsonFlag } from '../core/flag-parser.js';
 import { findResource, findOperation } from '../core/plugin-interface.js';
 import { registry } from '../core/registry-instance.js';
 import { executePluginOperation } from './execute-helper.js';
-import { printOutput } from './output.js';
+import { printError } from './output.js';
 
 export class RunCommand extends Command {
   static override paths = [['run']];
@@ -20,52 +21,91 @@ export class RunCommand extends Command {
     ],
   });
 
-  human = Option.Boolean('--human', false, {
-    description: 'Output in human-readable format instead of JSON',
+  json = Option.Boolean('--json', false, {
+    description: 'Output in JSON format (default: human-readable)',
   });
 
   // All positional + flag args captured via proxy (no -- required)
   args = Option.Proxy();
 
   async execute(): Promise<void> {
+    // Option.Proxy swallows all flags including --json, so extract it from raw args
+    const [jsonFromArgs, args] = extractJsonFlag(this.args);
+    const json = this.json || jsonFromArgs;
+
     // Extract positional args — filter out flags so order doesn't matter
-    const positional = this.args.filter((a) => !a.startsWith('-'));
+    const positional = args.filter((a) => !a.startsWith('-'));
     const [service, resource, operation] = positional;
 
     if (!service || !resource || !operation) {
-      printOutput({
-        error: {
+      printError(
+        {
           code: 'INVALID_USAGE',
           message: 'Usage: nathan run <service> <resource> <operation> [--param=value ...]',
         },
-      });
+        { json },
+      );
       process.exitCode = 1;
       return;
     }
 
     const plugin = await registry.getOrLoad(service);
     if (!plugin) {
-      printOutput({
-        error: {
+      printError(
+        {
           code: 'PLUGIN_NOT_FOUND',
           message: `Plugin "${service}" not found`,
           suggestion: "Run 'nathan discover' to see available plugins",
         },
-      });
+        { json },
+      );
       process.exitCode = 1;
       return;
     }
 
     const res = findResource(plugin.descriptor, resource);
-    const op = res ? findOperation(res, operation) : undefined;
+    if (!res) {
+      const resources = plugin.descriptor.resources.map((r) => r.name);
+      printError(
+        {
+          code: 'RESOURCE_NOT_FOUND',
+          message: `Resource "${resource}" not found in "${service}"`,
+          available: resources,
+        },
+        {
+          json,
+          hint: `Available resources: ${resources.join(', ')}\nRun 'nathan describe ${service}' for full documentation.`,
+        },
+      );
+      process.exitCode = 1;
+      return;
+    }
+
+    const op = findOperation(res, operation);
+    if (!op) {
+      const ops = res.operations.map((o) => o.name);
+      printError(
+        {
+          code: 'OPERATION_NOT_FOUND',
+          message: `Operation "${operation}" not found on "${resource}"`,
+          available: ops,
+        },
+        {
+          json,
+          hint: `Available operations: ${ops.join(', ')}\nRun 'nathan describe ${service} ${resource}' for full documentation.`,
+        },
+      );
+      process.exitCode = 1;
+      return;
+    }
 
     await executePluginOperation({
       plugin,
       resource,
       operation,
       op,
-      rawArgs: this.args,
-      human: this.human,
+      rawArgs: args,
+      json,
     });
   }
 }

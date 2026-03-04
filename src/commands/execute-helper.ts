@@ -12,39 +12,39 @@ import {
 import { parseFlags, extractLimit } from '../core/flag-parser.js';
 import { validateParameters } from '../core/parameter-validator.js';
 import type { Plugin, Operation } from '../core/plugin-interface.js';
-import { printOutput } from './output.js';
+import { printOutput, printError } from './output.js';
 
 /**
  * Execute a plugin operation with full validation, credential checks, and output.
- * Returns void — sets process.exitCode on failure.
+ * Sets process.exitCode = 1 on failure.
  */
 export async function executePluginOperation(opts: {
   plugin: Plugin;
   resource: string;
   operation: string;
-  op?: Operation;
+  op: Operation;
   rawArgs: string[];
-  human: boolean;
+  json: boolean;
 }): Promise<void> {
-  const { plugin, resource, operation, op, rawArgs, human } = opts;
+  const { plugin, resource, operation, op, rawArgs, json } = opts;
 
   const params = parseFlags(rawArgs);
   const limit = extractLimit(params);
 
-  if (op) {
-    const validationError = validateParameters(op, params);
-    if (validationError) {
-      printOutput(validationError, { human });
-      process.exitCode = 1;
-      return;
-    }
+  const describeHint = `Run 'nathan describe ${plugin.descriptor.name} ${resource} ${operation}' for full documentation.`;
+
+  const validationResult = validateParameters(op, params);
+  if (validationResult && !validationResult.success) {
+    printError(validationResult.error, { json, hint: describeHint });
+    process.exitCode = 1;
+    return;
   }
 
   const credentials = await resolveCredentialsForPlugin(plugin.descriptor);
 
   const credError = checkCredentialsConfigured(plugin.descriptor, credentials);
   if (credError) {
-    printOutput(credError, { human });
+    printError(credError.error, { json, hint: credError.error.env_vars.join(', ') });
     process.exitCode = 1;
     return;
   }
@@ -52,10 +52,10 @@ export async function executePluginOperation(opts: {
   const result = await plugin.execute(resource, operation, params, credentials);
 
   if (!result.success) {
-    printOutput(result, { human });
+    printError(result.error, { json });
     process.exitCode = 1;
     return;
   }
 
-  printOutput(result.data, { human, limit });
+  printOutput(result.data, { json, limit });
 }

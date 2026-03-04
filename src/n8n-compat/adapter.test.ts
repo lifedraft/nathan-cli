@@ -72,18 +72,18 @@ describe('adaptNodeTypeDescription', () => {
     expect(repoResource).toBeTruthy();
 
     // Issue should have 2 operations
-    expect(issueResource!.operations).toHaveLength(2);
-    expect(issueResource!.operations.map((o) => o.name)).toEqual(['get', 'create']);
+    expect(issueResource?.operations).toHaveLength(2);
+    expect(issueResource?.operations.map((o) => o.name)).toEqual(['get', 'create']);
 
     // Repository should have 1 operation
-    expect(repoResource!.operations).toHaveLength(1);
+    expect(repoResource?.operations).toHaveLength(1);
 
     // Operations should require auth
-    expect(issueResource!.operations[0].requiresAuth).toBe(true);
+    expect(issueResource?.operations[0].requiresAuth).toBe(true);
 
     // Owner parameter should be present on issue operations
-    const getOp = issueResource!.operations[0];
-    expect(getOp.parameters.some((p) => p.name === 'owner')).toBe(true);
+    const getOp = issueResource?.operations[0];
+    expect(getOp?.parameters.some((p) => p.name === 'owner')).toBe(true);
   });
 
   test('adapts a single-purpose node (no resource/operation)', () => {

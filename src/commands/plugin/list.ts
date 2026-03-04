@@ -4,7 +4,7 @@
 
 import { Command, Option } from 'clipanion';
 
-import { printOutput } from '../output.js';
+import { printError } from '../output.js';
 
 export class PluginListCommand extends Command {
   static override paths = [['plugin', 'list']];
@@ -14,11 +14,15 @@ export class PluginListCommand extends Command {
     examples: [['List plugins', 'nathan plugin list']],
   });
 
-  human = Option.Boolean('--human', false, {
-    description: 'Output in human-readable format instead of JSON',
+  json = Option.Boolean('--json', false, {
+    description: 'Output in JSON format (default: human-readable)',
   });
 
   async execute(): Promise<void> {
-    printOutput({ status: 'not_implemented' }, { human: this.human });
+    printError(
+      { code: 'NOT_IMPLEMENTED', message: 'Plugin list is not yet implemented' },
+      { json: this.json },
+    );
+    process.exitCode = 1;
   }
 }

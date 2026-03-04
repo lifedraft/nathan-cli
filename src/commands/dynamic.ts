@@ -8,16 +8,20 @@
  * Also provides a lazy factory for plugins that haven't been loaded yet,
  * registering a single `nathan <service>` catch-all command that loads on
  * first invocation.
+ *
+ * Clipanion prefers more-specific paths (3-segment) over shorter ones, so
+ * eagerly loaded plugins always win if both are registered.
  */
 
 import { Command, Option } from 'clipanion';
 import type { CommandClass } from 'clipanion';
 
+import { extractJsonFlag } from '../core/flag-parser.js';
 import type { Plugin } from '../core/plugin-interface.js';
 import { findResource, findOperation } from '../core/plugin-interface.js';
 import type { PluginRegistry } from '../core/plugin-registry.js';
 import { executePluginOperation } from './execute-helper.js';
-import { printOutput } from './output.js';
+import { printError } from './output.js';
 
 /**
  * Generate all dynamic Command classes for a loaded plugin.
@@ -43,20 +47,22 @@ export function createPluginCommands(plugin: Plugin): CommandClass[] {
           ],
         });
 
-        human = Option.Boolean('--human', false, {
-          description: 'Output in human-readable format instead of JSON',
+        json = Option.Boolean('--json', false, {
+          description: 'Output in JSON format (default: human-readable)',
         });
 
         args = Option.Proxy();
 
         async execute(): Promise<void> {
+          const [jsonFromArgs, args] = extractJsonFlag(this.args);
+          const json = this.json || jsonFromArgs;
           await executePluginOperation({
             plugin,
             resource: resource.name,
             operation: operation.name,
             op: operation,
-            rawArgs: this.args,
-            human: this.human,
+            rawArgs: args,
+            json,
           });
         }
       };
@@ -73,9 +79,6 @@ export function createPluginCommands(plugin: Plugin): CommandClass[] {
  * yet. The command has path `[serviceName]` and uses Option.Proxy() to capture
  * `<resource> <operation> --flags...`.  On first invocation the plugin is
  * loaded from the registry.
- *
- * Clipanion prefers more-specific paths (3-segment) over shorter ones, so
- * eagerly loaded plugins always win if both are registered.
  */
 export function createLazyPluginCommand(
   serviceName: string,
@@ -88,64 +91,84 @@ export function createLazyPluginCommand(
       description: `Run an operation on the ${serviceName} service (lazy-loaded)`,
     });
 
-    human = Option.Boolean('--human', false, {
-      description: 'Output in human-readable format instead of JSON',
+    json = Option.Boolean('--json', false, {
+      description: 'Output in JSON format (default: human-readable)',
     });
 
     args = Option.Proxy();
 
     async execute(): Promise<void> {
+      // Option.Proxy swallows all flags including --json, so extract it from raw args
+      const [jsonFromArgs, args] = extractJsonFlag(this.args);
+      const json = this.json || jsonFromArgs;
+
       const plugin = await registryRef.getOrLoad(serviceName);
       if (!plugin) {
-        printOutput({
-          error: {
+        printError(
+          {
             code: 'PLUGIN_NOT_FOUND',
             message: `Plugin "${serviceName}" not found`,
             suggestion: "Run 'nathan discover' to see available plugins",
           },
-        });
+          { json },
+        );
         process.exitCode = 1;
         return;
       }
 
       // Extract positional args — filter out flags so order doesn't matter
-      const positional = this.args.filter((a) => !a.startsWith('-'));
+      const positional = args.filter((a) => !a.startsWith('-'));
       const [resource, operation] = positional;
 
       if (!resource || !operation) {
-        printOutput({
-          error: {
+        const resources = plugin.descriptor.resources.map((r) => r.name);
+        printError(
+          {
             code: 'INVALID_USAGE',
             message: `Usage: nathan ${serviceName} <resource> <operation> [--param=value ...]`,
-            available_resources: plugin.descriptor.resources.map((r) => r.name),
+            available: resources,
           },
-        });
+          {
+            json,
+            hint: `Available resources: ${resources.join(', ')}\nRun 'nathan describe ${serviceName}' for full documentation.`,
+          },
+        );
         process.exitCode = 1;
         return;
       }
 
       const res = findResource(plugin.descriptor, resource);
       if (!res) {
-        printOutput({
-          error: {
+        const resources = plugin.descriptor.resources.map((r) => r.name);
+        printError(
+          {
             code: 'RESOURCE_NOT_FOUND',
             message: `Resource "${resource}" not found in "${serviceName}"`,
-            available: plugin.descriptor.resources.map((r) => r.name),
+            available: resources,
           },
-        });
+          {
+            json,
+            hint: `Available resources: ${resources.join(', ')}\nRun 'nathan describe ${serviceName}' for full documentation.`,
+          },
+        );
         process.exitCode = 1;
         return;
       }
 
       const op = findOperation(res, operation);
       if (!op) {
-        printOutput({
-          error: {
+        const ops = res.operations.map((o) => o.name);
+        printError(
+          {
             code: 'OPERATION_NOT_FOUND',
             message: `Operation "${operation}" not found on "${resource}"`,
-            available: res.operations.map((o) => o.name),
+            available: ops,
           },
-        });
+          {
+            json,
+            hint: `Available operations: ${ops.join(', ')}\nRun 'nathan describe ${serviceName} ${resource}' for full documentation.`,
+          },
+        );
         process.exitCode = 1;
         return;
       }
@@ -155,8 +178,8 @@ export function createLazyPluginCommand(
         resource,
         operation,
         op,
-        rawArgs: this.args,
-        human: this.human,
+        rawArgs: args,
+        json,
       });
     }
   };

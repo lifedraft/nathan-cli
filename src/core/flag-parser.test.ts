@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 
-import { parseFlags, parseFlagsAsStrings } from './flag-parser.js';
+import { parseFlags, parseFlagsAsStrings, extractJsonFlag } from './flag-parser.js';
 
 describe('parseFlags', () => {
   test('parses --key=value pairs', () => {
@@ -66,5 +66,55 @@ describe('parseFlagsAsStrings', () => {
 
   test('handles empty args', () => {
     expect(parseFlagsAsStrings([])).toEqual({});
+  });
+});
+
+describe('extractJsonFlag', () => {
+  test('extracts bare --json flag', () => {
+    const [json, cleaned] = extractJsonFlag(['--owner=foo', '--json', '--limit=5']);
+    expect(json).toBe(true);
+    expect(cleaned).toEqual(['--owner=foo', '--limit=5']);
+  });
+
+  test('extracts --json=true', () => {
+    const [json, cleaned] = extractJsonFlag(['--json=true', '--id=1']);
+    expect(json).toBe(true);
+    expect(cleaned).toEqual(['--id=1']);
+  });
+
+  test('extracts --json=false (removes flag, returns false)', () => {
+    const [json, cleaned] = extractJsonFlag(['--json=false', '--id=1']);
+    expect(json).toBe(false);
+    expect(cleaned).toEqual(['--id=1']);
+  });
+
+  test('returns false when no --json flag present', () => {
+    const [json, cleaned] = extractJsonFlag(['--owner=foo', '--limit=5']);
+    expect(json).toBe(false);
+    expect(cleaned).toEqual(['--owner=foo', '--limit=5']);
+  });
+
+  test('handles empty args', () => {
+    const [json, cleaned] = extractJsonFlag([]);
+    expect(json).toBe(false);
+    expect(cleaned).toEqual([]);
+  });
+
+  test('does not strip --json-like values (e.g. --format=json)', () => {
+    const [json, cleaned] = extractJsonFlag(['--format=json']);
+    expect(json).toBe(false);
+    expect(cleaned).toEqual(['--format=json']);
+  });
+
+  test('handles --json interleaved with positionals', () => {
+    const [json, cleaned] = extractJsonFlag(['github', '--json', 'repos', 'list']);
+    expect(json).toBe(true);
+    expect(cleaned).toEqual(['github', 'repos', 'list']);
+  });
+
+  test('handles duplicate --json flags', () => {
+    const [json, cleaned] = extractJsonFlag(['--json', '--json=false', '--id=1']);
+    expect(json).toBe(true);
+    expect(cleaned).toEqual(['--id=1']);
   });
 });

@@ -1,15 +1,15 @@
 /**
  * Output formatting utilities.
  *
- * Defaults to JSON output. When --human flag is passed, uses chalk + cli-table3
- * for human-readable formatting.
+ * Defaults to human-readable output using chalk + cli-table3.
+ * When --json flag is passed, outputs raw JSON.
  */
 
 import chalk from 'chalk';
 import Table from 'cli-table3';
 
 export interface OutputOptions {
-  human?: boolean;
+  json?: boolean;
   /** Pretty-print JSON with indentation. Defaults to true. */
   pretty?: boolean;
   /** Truncate array results to this many items. */
@@ -20,31 +20,54 @@ export interface OutputOptions {
  * Format and print a result object.
  */
 function formatOutput(data: unknown, options: OutputOptions = {}): string {
-  if (options.human) {
-    return formatHuman(data);
+  if (options.json) {
+    return formatJson(data, options.pretty ?? true);
   }
-  return formatJson(data, options.pretty ?? true);
+  return formatHuman(data);
 }
 
 /**
  * Print formatted output to stdout.
  */
 export function printOutput(data: unknown, options: OutputOptions = {}): void {
-  const output = applyLimit(data, options.limit);
+  const output = applyLimit(data, options);
   const formatted = formatOutput(output, options);
   console.log(formatted);
 }
 
 /**
- * If limit is set and data is an array larger than limit, wrap with _meta.
+ * Print a structured error to stderr (both JSON and human mode).
+ *
+ * Does NOT set process.exitCode — callers are responsible for exit code management.
  */
-function applyLimit(data: unknown, limit?: number): unknown {
-  if (limit === undefined || !Array.isArray(data)) return data;
-  if (data.length <= limit) return data;
-  return {
-    items: data.slice(0, limit),
-    _meta: { total: data.length, returned: limit, truncated: true },
-  };
+export function printError<E extends { code: string; message: string; suggestion?: string }>(
+  error: E,
+  options: { json: boolean; hint?: string },
+): void {
+  if (options.json) {
+    console.error(JSON.stringify({ error }, null, 2));
+  } else {
+    console.error(`Error: ${error.message}`);
+    if (error.suggestion) console.error(error.suggestion);
+    if (options.hint) console.error(options.hint);
+  }
+}
+
+/**
+ * If limit is set and data is an array larger than limit, truncate.
+ * In JSON mode, wraps with _meta envelope. In human mode, slices and appends a footer.
+ */
+function applyLimit(data: unknown, options: OutputOptions): unknown {
+  const { limit, json } = options;
+  if (limit === undefined || !Array.isArray(data) || data.length <= limit) return data;
+  if (json) {
+    return {
+      items: data.slice(0, limit),
+      _meta: { total: data.length, returned: limit, truncated: true },
+    };
+  }
+  // Human mode: return a truncated wrapper so formatHuman can show a footer
+  return { __truncated: true, items: data.slice(0, limit), total: data.length, returned: limit };
 }
 
 /**
@@ -71,7 +94,13 @@ function formatHuman(data: unknown): string {
   }
 
   if (typeof data === 'object') {
-    return formatObject(data as Record<string, unknown>);
+    // Handle truncated wrapper from applyLimit (human mode)
+    const obj = data as Record<string, unknown>;
+    if (obj.__truncated === true && Array.isArray(obj.items)) {
+      const table = formatArray(obj.items as unknown[]);
+      return `${table}\n${chalk.dim(`(showing ${obj.returned} of ${obj.total} results)`)}`;
+    }
+    return formatObject(obj);
   }
 
   return String(data);

@@ -93,7 +93,7 @@ describe('loadN8nNodeFromPath (GitHub node)', () => {
     const plugin = await loadN8nNodeFromPath(githubModulePath);
     const issueResource = plugin.descriptor.resources.find((r) => r.name === 'issue');
     expect(issueResource).toBeTruthy();
-    const opNames = issueResource!.operations.map((o) => o.name);
+    const opNames = issueResource?.operations.map((o) => o.name);
     expect(opNames).toContain('get');
     expect(opNames).toContain('create');
   });
@@ -101,11 +101,11 @@ describe('loadN8nNodeFromPath (GitHub node)', () => {
   test('GitHub operations have parameters', async () => {
     const plugin = await loadN8nNodeFromPath(githubModulePath);
     const issueResource = plugin.descriptor.resources.find((r) => r.name === 'issue');
-    const getOp = issueResource!.operations.find((o) => o.name === 'get');
+    const getOp = issueResource?.operations.find((o) => o.name === 'get');
     expect(getOp).toBeTruthy();
-    expect(getOp!.parameters.length).toBeGreaterThan(0);
+    expect(getOp?.parameters.length).toBeGreaterThan(0);
     // Should have owner and repo parameters
-    const paramNames = getOp!.parameters.map((p) => p.name);
+    const paramNames = getOp?.parameters.map((p) => p.name);
     expect(paramNames).toContain('owner');
     expect(paramNames).toContain('repository');
   });

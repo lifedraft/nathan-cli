@@ -308,6 +308,7 @@ export async function loadPluginsFromDir(dirPath: string, registry: PluginRegist
     if (ext === '.yaml' || ext === '.yml') {
       try {
         const filePath = join(dirPath, entry);
+        // eslint-disable-next-line no-await-in-loop -- sequential: each file has its own try/catch
         const raw = await readFile(filePath, 'utf-8');
         const parsed = parseYaml(raw);
 
@@ -321,12 +322,14 @@ export async function loadPluginsFromDir(dirPath: string, registry: PluginRegist
         // that have only `type` and `module` fields, no `name`).
         let plugin: Plugin | null = null;
         for (const strategy of loaderStrategies) {
+          // eslint-disable-next-line no-await-in-loop -- sequential: strategies tried in order with early break
           plugin = await strategy(filePath, manifest);
           if (plugin) break;
         }
 
         // Fall back to YAML loading (requires `name` field)
         if (!plugin) {
+          // eslint-disable-next-line no-await-in-loop -- sequential: fallback after strategy loop
           plugin = await loadYamlPlugin(filePath);
         }
 

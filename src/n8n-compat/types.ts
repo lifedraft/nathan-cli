@@ -71,7 +71,7 @@ export interface INodePropertyRouting {
     returnFullResponse?: boolean;
   };
   send?: {
-    preSend?: Array<string>;
+    preSend?: string[];
     paginate?: boolean | string;
     type?: 'body' | 'query';
     property?: string;

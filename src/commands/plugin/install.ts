@@ -4,7 +4,7 @@
 
 import { Command, Option } from 'clipanion';
 
-import { printOutput } from '../output.js';
+import { printError } from '../output.js';
 
 export class PluginInstallCommand extends Command {
   static override paths = [['plugin', 'install']];
@@ -19,11 +19,18 @@ export class PluginInstallCommand extends Command {
 
   name = Option.String({ required: true, name: 'name' });
 
-  human = Option.Boolean('--human', false, {
-    description: 'Output in human-readable format instead of JSON',
+  json = Option.Boolean('--json', false, {
+    description: 'Output in JSON format (default: human-readable)',
   });
 
   async execute(): Promise<void> {
-    printOutput({ status: 'not_implemented', plugin: this.name }, { human: this.human });
+    printError(
+      {
+        code: 'NOT_IMPLEMENTED',
+        message: `Plugin install is not yet implemented (plugin: ${this.name})`,
+      },
+      { json: this.json },
+    );
+    process.exitCode = 1;
   }
 }

@@ -339,7 +339,7 @@ function adaptResourceOperationNode(
 ): Resource[] {
   const resources: Resource[] = [];
 
-  for (const resOpt of resourceProp.options!) {
+  for (const resOpt of resourceProp.options ?? []) {
     if (!isPropertyOption(resOpt)) continue;
 
     const resourceValue = String(resOpt.value);
@@ -424,7 +424,7 @@ function adaptOperationOnlyNode(
 ): Resource[] {
   const operations: Operation[] = [];
 
-  for (const opOpt of operationProp.options!) {
+  for (const opOpt of operationProp.options ?? []) {
     if (!isPropertyOption(opOpt)) continue;
     const operationValue = String(opOpt.value);
     const method = inferHttpMethod(operationProp, operationValue, desc);
