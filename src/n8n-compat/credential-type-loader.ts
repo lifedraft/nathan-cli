@@ -8,17 +8,14 @@
  * All n8n credential module loading now goes through this single module.
  */
 
-import { createRequire } from 'node:module';
-
 import type {
   CredentialField,
   CredentialFieldType,
   CredentialTypeInfo,
 } from '../core/credential-introspector.js';
 import type { HttpMethod, CredentialAuthConfig } from '../core/plugin-interface.js';
+import { getRequire } from './require.js';
 import type { IAuthenticateGeneric } from './types.js';
-
-const require = createRequire(import.meta.url);
 
 // ---------------------------------------------------------------------------
 // Credential type name validation
@@ -70,7 +67,7 @@ export function loadCredentialTypeDefinition(credTypeName: string): CredentialTy
 
   try {
     const pascalName = safeName.charAt(0).toUpperCase() + safeName.slice(1);
-    const mod = require(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
+    const mod = getRequire()(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
     const CredClass = mod[pascalName] ?? mod.default ?? Object.values(mod)[0];
     if (!CredClass || typeof CredClass !== 'function') return null;
 
@@ -147,7 +144,7 @@ export function loadCredentialAuthenticate(credentialType: string): CredentialAu
 
   try {
     const pascalName = safeName.charAt(0).toUpperCase() + safeName.slice(1);
-    const mod = require(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
+    const mod = getRequire()(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
     const CredClass = mod[pascalName] ?? mod.default ?? Object.values(mod)[0];
     if (CredClass && typeof CredClass === 'function') {
       const instance = new (CredClass as new () => Record<string, unknown>)();

@@ -5,10 +5,9 @@
  * workflow-internal nodes, and returns entries ready for lazy registration.
  */
 
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
-const require = createRequire(import.meta.url);
+import { getRequire } from './require.js';
 
 export interface DiscoveredNode {
   /** Full path to the .node.js file inside n8n-nodes-base */
@@ -119,7 +118,8 @@ function toServiceName(nodeName: string): string {
  * This is a pure function over the package.json data.
  */
 export function discoverN8nNodes(): DiscoveredNode[] {
-  const pkg = require('n8n-nodes-base/package.json');
+  const req = getRequire();
+  const pkg = req('n8n-nodes-base/package.json');
   const nodePaths: string[] = pkg?.n8n?.nodes ?? [];
 
   const results: DiscoveredNode[] = [];
@@ -136,7 +136,7 @@ export function discoverN8nNodes(): DiscoveredNode[] {
 
     const serviceName = toServiceName(nodeName);
     const modulePath = join(
-      require.resolve('n8n-nodes-base/package.json').replace('/package.json', ''),
+      req.resolve('n8n-nodes-base/package.json').replace('/package.json', ''),
       nodePath,
     );
 

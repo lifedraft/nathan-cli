@@ -25,40 +25,24 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build all targets
+      - name: Build
         run: |
+          bun run build
           mkdir -p release
+          cp dist/nathan release/nathan
+          chmod +x release/nathan
+          tar -czf release/nathan.tar.gz -C release nathan
+          cd release && sha256sum nathan.tar.gz > checksums.txt
 
-          targets=(
-            "bun-linux-x64:linux_amd64"
-            "bun-linux-arm64:linux_arm64"
-            "bun-darwin-x64:darwin_amd64"
-            "bun-darwin-arm64:darwin_arm64"
-            "bun-windows-x64:windows_amd64"
-          )
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
 
-          for entry in "${targets[@]}"; do
-            target="${entry%%:*}"
-            label="${entry##*:}"
-
-            echo "Building ${target} -> ${label}"
-            bun build src/index.ts --compile --target="${target}" --outfile "release/nathan"
-
-            if [[ "${label}" == windows_* ]]; then
-              # Bun outputs .exe directly for Windows targets
-              (cd release && zip "../release/nathan_${label}.zip" nathan.exe)
-              rm release/nathan.exe
-            else
-              chmod +x release/nathan
-              tar -czf "release/nathan_${label}.tar.gz" -C release nathan
-              rm release/nathan
-            fi
-          done
-
-      - name: Generate checksums
-        run: |
-          cd release
-          sha256sum nathan_*.{tar.gz,zip} > checksums.txt
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
 
       - name: Create GitHub Release
         env:
@@ -67,8 +51,7 @@ jobs:
           gh release create "${{ github.ref_name }}" \
             --title "${{ github.ref_name }}" \
             --generate-notes \
-            release/nathan_*.tar.gz \
-            release/nathan_*.zip \
+            release/nathan.tar.gz \
             release/checksums.txt
 
       - name: Update Homebrew formula
@@ -76,11 +59,7 @@ jobs:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          DARWIN_AMD64_SHA=$(grep darwin_amd64 release/checksums.txt | awk '{print $1}')
-          DARWIN_ARM64_SHA=$(grep darwin_arm64 release/checksums.txt | awk '{print $1}')
-          LINUX_AMD64_SHA=$(grep linux_amd64 release/checksums.txt | awk '{print $1}')
-          LINUX_ARM64_SHA=$(grep linux_arm64 release/checksums.txt | awk '{print $1}')
-
+          SHA=$(awk '{print $1}' release/checksums.txt)
           REPO_URL="https://github.com/lifedraft/nathan/releases/download/v${VERSION}"
 
           cat > formula.rb << FORMULA
@@ -90,25 +69,10 @@ jobs:
             version "${VERSION}"
             license "MIT"
 
-            on_macos do
-              if Hardware::CPU.arm?
-                url "${REPO_URL}/nathan_darwin_arm64.tar.gz"
-                sha256 "${DARWIN_ARM64_SHA}"
-              else
-                url "${REPO_URL}/nathan_darwin_amd64.tar.gz"
-                sha256 "${DARWIN_AMD64_SHA}"
-              end
-            end
+            depends_on "oven-sh/bun/bun"
 
-            on_linux do
-              if Hardware::CPU.arm?
-                url "${REPO_URL}/nathan_linux_arm64.tar.gz"
-                sha256 "${LINUX_ARM64_SHA}"
-              else
-                url "${REPO_URL}/nathan_linux_amd64.tar.gz"
-                sha256 "${LINUX_AMD64_SHA}"
-              end
-            end
+            url "${REPO_URL}/nathan.tar.gz"
+            sha256 "${SHA}"
 
             def install
               bin.install "nathan"

@@ -3,22 +3,39 @@
 A pluggable CLI that turns popular services into simple, scriptable commands. 400+ integrations out of the box via n8n's node ecosystem, with a consistent interface across all of them.
 
 ```bash
-nathan github repo get --owner=torvalds --repo=linux
+nathan github repository get --owner=torvalds --repository=linux
 ```
 
 ## Install
 
+### npm / bun (recommended)
+
+Installing as a global package pulls in nathan and all 400+ n8n integrations in one step:
+
 ```bash
-# Download the latest release
-curl -fsSL https://github.com/user/nathan/releases/latest/download/nathan -o nathan
-chmod +x nathan
+# bun
+bun install -g nathan
+
+# npm
+npm install -g nathan
 ```
 
-Or build from source with [Bun](https://bun.sh/):
+### Homebrew
 
 ```bash
-bun install && bun run build
-# Binary at dist/nathan
+brew install lifedraft/tap/nathan
+```
+
+Then install the n8n nodes separately (see [n8n nodes](#n8n-nodes) below).
+
+### Build from source
+
+```bash
+git clone https://github.com/lifedraft/nathan.git
+cd nathan
+bun install
+bun run build
+# Output at dist/nathan
 ```
 
 ## How It Works
@@ -37,15 +54,15 @@ nathan discover --human         # Formatted table
 Drill down from service to resource to operation:
 
 ```bash
-nathan describe github                  # What resources does GitHub have?
-nathan describe github repo             # What can I do with repos?
-nathan describe github repo get         # What parameters does "get" need?
+nathan describe github                       # What resources does GitHub have?
+nathan describe github repository            # What can I do with repos?
+nathan describe github repository get        # What parameters does "get" need?
 ```
 
 ### 3. Execute
 
 ```bash
-nathan github repo get --owner=torvalds --repo=linux
+nathan github repository get --owner=torvalds --repository=linux
 nathan jsonplaceholder post list --_limit=5
 nathan jsonplaceholder post create --title="Hello" --body="World" --userId=1
 ```
@@ -54,24 +71,15 @@ Output is JSON by default. Use `--human` for readable formatting.
 
 ## Authentication
 
-Store credentials locally with encrypted storage. They're automatically injected into requests.
+Credentials are passed via environment variables and automatically injected into requests.
 
 ```bash
-nathan auth add github --token=ghp_xxxxxxxxxxxx
-nathan auth test github                            # Verify they work
-nathan auth list                                   # See what's stored (values hidden)
-nathan auth remove github                          # Delete them
+NATHAN_GITHUB_TOKEN=ghp_xxx nathan github repository get --owner=torvalds --repository=linux
 ```
 
-Environment variables always take priority over stored credentials:
+The lookup order is: `NATHAN_<SERVICE>_TOKEN` → `<SERVICE>_TOKEN` → `NATHAN_<SERVICE>_API_KEY` → `<SERVICE>_API_KEY`.
 
-```bash
-NATHAN_GITHUB_TOKEN=ghp_xxx nathan github repo get --owner=torvalds --repo=linux
-```
-
-The lookup order is: `NATHAN_<SERVICE>_TOKEN` → `<SERVICE>_TOKEN` → `NATHAN_<SERVICE>_API_KEY` → credential store.
-
-Credentials are encrypted with AES-256-GCM and stored at `~/.nathan/credentials.enc`.
+Run `nathan describe <service>` to see which environment variables a service accepts.
 
 ## Adding Services
 
@@ -116,32 +124,34 @@ resources:
 
 ### n8n nodes
 
-Use any of the 400+ nodes from the n8n ecosystem with a two-line manifest:
+Nathan auto-discovers all 400+ nodes from `n8n-nodes-base` at runtime — no configuration needed.
+
+If you installed nathan via `npm install -g` or `bun install -g`, the n8n packages are already included as dependencies. Run `nathan discover` to see all available services.
+
+If you installed via Homebrew or binary download, install the n8n packages separately:
+
+```bash
+bun install -g n8n-nodes-base n8n-workflow
+# or: npm install -g n8n-nodes-base n8n-workflow
+```
+
+You can also point to individual n8n nodes with a two-line YAML manifest in `plugins/`:
 
 ```yaml
 type: n8n-compat
 module: n8n-nodes-base/dist/nodes/Github/Github.node.js
 ```
 
-No modifications to the original node needed.
+### Plugin directories
 
-### Plugin management
-
-```bash
-nathan plugin list              # List installed plugins
-nathan plugin install <path>    # Install a plugin
-```
-
-Set `NATHAN_PLUGIN_DIRS` (colon-separated paths) to load plugins from additional directories.
+Set `NATHAN_PLUGIN_DIRS` (colon-separated paths) to load plugins from additional directories beyond the built-in `plugins/` folder.
 
 ## Configuration
 
 | Variable | Purpose |
 |---|---|
-| `NATHAN_<SERVICE>_TOKEN` | Override credentials for a service |
+| `NATHAN_<SERVICE>_TOKEN` | Credentials for a service |
 | `NATHAN_PLUGIN_DIRS` | Additional plugin directories (colon-separated) |
-| `NATHAN_MASTER_KEY` | Custom master key for credential encryption |
-| `NATHAN_ALLOW_HTTP` | Allow unencrypted HTTP when credentials are attached |
 | `NATHAN_DEBUG` | Enable verbose logging |
 
 ## License

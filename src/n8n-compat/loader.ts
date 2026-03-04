@@ -6,8 +6,8 @@
  * composition root.
  */
 
-import { createRequire } from 'node:module';
-
+import { buildCredentialObject } from '../core/credential-injector.js';
+import { executeOperation } from '../core/executor.js';
 import {
   findResource,
   findOperation,
@@ -15,12 +15,9 @@ import {
   type Result,
   type ResolvedCredentials,
 } from '../core/plugin-interface.js';
-
-const require = createRequire(import.meta.url);
-import { buildCredentialObject } from '../core/credential-injector.js';
-import { executeOperation } from '../core/executor.js';
 import { adaptNodeTypeDescription } from './adapter.js';
 import { createExecutionContext } from './execution-shim.js';
+import { getRequire } from './require.js';
 import type { INodeType } from './types.js';
 
 /**
@@ -119,7 +116,7 @@ function loadN8nNode(nodeInstance: INodeType): Plugin {
  * Load an n8n node from a module path (require the .node.js file).
  */
 export async function loadN8nNodeFromPath(modulePath: string): Promise<Plugin> {
-  const mod = require(modulePath);
+  const mod = getRequire()(modulePath);
   const NodeClass =
     mod.default ??
     Object.values(mod).find(
