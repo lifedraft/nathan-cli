@@ -10,14 +10,22 @@ nathan github repository get --owner=torvalds --repository=linux
 
 ### npm / bun (recommended)
 
-Installing as a global package pulls in nathan and all 400+ n8n integrations in one step:
-
 ```bash
 # bun
 bun install -g nathan-cli
 
 # npm
 npm install -g nathan-cli
+```
+
+Nathan works out of the box with YAML plugins. To enable all 400+ n8n integrations, install the n8n packages globally alongside nathan:
+
+```bash
+# bun
+bun install -g n8n-nodes-base n8n-workflow
+
+# npm
+npm install -g n8n-nodes-base n8n-workflow
 ```
 
 ### Build from source
@@ -125,7 +133,7 @@ resources:
 
 Nathan auto-discovers all 400+ nodes from `n8n-nodes-base` at runtime — no configuration needed. Nodes are loaded lazily on first use, so startup stays fast.
 
-If you installed via `npm install -g` or `bun install -g`, the n8n packages are already included as peer dependencies. Run `nathan discover` to see all available services.
+Install `n8n-nodes-base` and `n8n-workflow` globally (see [Install](#install)) and run `nathan discover` to see all available services.
 
 To use a custom n8n node (not part of `n8n-nodes-base`), point to it with a two-line YAML manifest in `plugins/`:
 
