@@ -442,10 +442,118 @@ const shimLogger = {
 // Public API
 // ---------------------------------------------------------------------------
 
-interface NodePropertyDef {
+/** Dangerous property names that must never be used as keys. */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export interface NodePropertyDef {
   name: string;
   type?: string;
   default?: unknown;
+  options?: Array<{ name: string; values?: Array<{ name: string }> }>;
+}
+
+/**
+ * Re-nest flat CLI params into collection/fixedCollection parent objects.
+ *
+ * The adapter flattens collection children (e.g. `additionalFields.keyword`
+ * becomes `--keyword`) for CLI ergonomics, but n8n node code expects them
+ * nested under the parent name.  This function reverses that flattening.
+ *
+ * To avoid ambiguity when multiple collections share a child name, we first
+ * build a map of child→parent ownership.  If a child name appears in more
+ * than one collection it is considered ambiguous and left at the top level
+ * (the user must pass `--parent.child` to disambiguate).
+ */
+export function nestCollectionParams(
+  flatParams: Record<string, unknown>,
+  nodeProperties: NodePropertyDef[],
+): Record<string, unknown> {
+  const result = { ...flatParams };
+
+  // Phase 1: build child-name → parent-prop mapping.
+  // A child that appears in multiple parents is marked ambiguous (null).
+  const childOwner = new Map<string, NodePropertyDef | null>();
+
+  for (const prop of nodeProperties) {
+    if (prop.type !== 'collection' && prop.type !== 'fixedCollection') continue;
+    if (!prop.options) continue;
+    if (UNSAFE_KEYS.has(prop.name)) continue;
+
+    for (const opt of prop.options) {
+      const names: string[] = [];
+      if (opt.values) {
+        for (const v of opt.values) names.push(v.name);
+      } else {
+        names.push(opt.name);
+      }
+      for (const name of names) {
+        if (UNSAFE_KEYS.has(name)) continue;
+        if (childOwner.has(name)) {
+          // Ambiguous — multiple parents claim this child
+          if (childOwner.get(name) !== prop) childOwner.set(name, null);
+        } else {
+          childOwner.set(name, prop);
+        }
+      }
+    }
+  }
+
+  // Phase 2: group flat params into their parent collections.
+  const grouped = new Map<string, Record<string, unknown>>();
+
+  for (const [childName, owner] of childOwner) {
+    if (!owner) continue; // ambiguous — leave at top level
+    if (!Object.hasOwn(result, childName)) continue;
+
+    const parentName = owner.name;
+    if (!grouped.has(parentName)) grouped.set(parentName, {});
+    const group = grouped.get(parentName);
+    if (group) group[childName] = result[childName];
+    delete result[childName];
+  }
+
+  // Phase 3: write grouped params back, respecting collection shape.
+  for (const prop of nodeProperties) {
+    if (!grouped.has(prop.name)) continue;
+
+    // Already explicitly provided as a plain object — don't overwrite
+    if (
+      Object.hasOwn(result, prop.name) &&
+      typeof result[prop.name] === 'object' &&
+      result[prop.name] !== null &&
+      !Array.isArray(result[prop.name])
+    ) {
+      continue;
+    }
+
+    const nested = grouped.get(prop.name);
+    if (!nested) continue;
+
+    if (prop.type === 'fixedCollection' && prop.options) {
+      // fixedCollection expects { groupName: [{ child: val }] } shape.
+      // Determine which group the children belong to and wrap in array.
+      const fixedResult: Record<string, unknown[]> = {};
+      for (const opt of prop.options) {
+        if (!opt.values) continue;
+        const groupChildren: Record<string, unknown> = {};
+        let hasChild = false;
+        for (const v of opt.values) {
+          if (v.name in nested) {
+            groupChildren[v.name] = nested[v.name];
+            hasChild = true;
+          }
+        }
+        if (hasChild) {
+          fixedResult[opt.name] = [groupChildren];
+        }
+      }
+      result[prop.name] = Object.keys(fixedResult).length > 0 ? fixedResult : nested;
+    } else {
+      result[prop.name] = nested;
+    }
+  }
+
+  return result;
 }
 
 export interface OperationMeta {
@@ -468,13 +576,16 @@ export interface ExecutionContextOptions {
  */
 export function createExecutionContext(options: ExecutionContextOptions): IExecuteFunctions {
   const {
-    params,
+    params: rawParams,
     credentials,
     nodeProperties,
     operationMeta,
     timezone = 'UTC',
     continueOnFail: shouldContinueOnFail = false,
   } = options;
+
+  // Re-nest flat CLI params into collection parent objects
+  const params = nestCollectionParams(rawParams, nodeProperties ?? []);
 
   // Build property defaults lookup
   const propDefaults = new Map<string, unknown>();

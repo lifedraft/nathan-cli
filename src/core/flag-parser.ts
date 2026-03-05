@@ -24,6 +24,9 @@ function coerce(value: string): FlagValue {
  * Parse --key=value and --key value flag pairs from an argument array.
  * Values are coerced to booleans/numbers where appropriate.
  */
+/** Property names that must never be set on param objects. */
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 export function parseFlags(args: string[]): Record<string, FlagValue> {
   const params: Record<string, FlagValue> = {};
   let i = 0;
@@ -34,15 +37,15 @@ export function parseFlags(args: string[]): Record<string, FlagValue> {
       if (eqIndex !== -1) {
         const key = arg.slice(2, eqIndex);
         const raw = arg.slice(eqIndex + 1);
-        params[key] = coerce(raw);
+        if (!UNSAFE_KEYS.has(key)) params[key] = coerce(raw);
       } else {
         const key = arg.slice(2);
         const next = args[i + 1];
         if (next && !next.startsWith('--')) {
-          params[key] = coerce(next);
+          if (!UNSAFE_KEYS.has(key)) params[key] = coerce(next);
           i++;
         } else {
-          params[key] = true;
+          if (!UNSAFE_KEYS.has(key)) params[key] = true;
         }
       }
     }

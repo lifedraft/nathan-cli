@@ -5,6 +5,8 @@
  * Loads plugins, registers dynamic commands, then runs the CLI.
  */
 
+declare const __APP_VERSION__: string;
+
 import { join } from 'node:path';
 
 import { plugin as bunPlugin } from 'bun';
@@ -13,6 +15,7 @@ import { Cli, Builtins } from 'clipanion';
 import { DescribeCommand } from './commands/describe.js';
 import { DiscoverCommand } from './commands/discover.js';
 import { createPluginCommands, createLazyPluginCommand } from './commands/dynamic.js';
+import { HelpCommand } from './commands/help.js';
 import { PluginInstallCommand } from './commands/plugin/install.js';
 import { PluginListCommand } from './commands/plugin/list.js';
 import { RunCommand } from './commands/run.js';
@@ -120,11 +123,14 @@ try {
 const cli = new Cli({
   binaryLabel: 'nathan',
   binaryName: 'nathan',
-  binaryVersion: '0.1.0',
+  binaryVersion:
+    __APP_VERSION__ !== undefined
+      ? __APP_VERSION__
+      : (process.env.npm_package_version ?? '0.0.0-dev'),
 });
 
 // Built-in commands
-cli.register(Builtins.HelpCommand);
+cli.register(HelpCommand);
 cli.register(Builtins.VersionCommand);
 
 // Static commands

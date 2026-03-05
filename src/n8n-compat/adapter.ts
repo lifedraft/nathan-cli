@@ -87,7 +87,9 @@ function humanise(name: string): string {
  */
 function resolveVersion(desc: INodeTypeDescription): string {
   if (desc.defaultVersion !== undefined) return String(desc.defaultVersion);
-  if (Array.isArray(desc.version)) return String(desc.version[desc.version.length - 1]);
+  if (Array.isArray(desc.version)) {
+    return desc.version.length > 0 ? String(desc.version[desc.version.length - 1]) : '1';
+  }
   return String(desc.version);
 }
 
@@ -243,7 +245,7 @@ function inferPath(
 /**
  * Convert an n8n property to a nathan Parameter.
  */
-function toNathanParameter(prop: INodeProperties): Parameter {
+function toNathanParameter(prop: INodeProperties, method?: HttpMethod): Parameter {
   return {
     name: prop.name,
     displayName: prop.displayName,
@@ -251,7 +253,14 @@ function toNathanParameter(prop: INodeProperties): Parameter {
     type: mapParameterType(prop.type),
     required: prop.required ?? false,
     default: normalizeDefault(prop.default),
-    location: prop.routing?.send?.type === 'query' ? 'query' : 'body',
+    location:
+      prop.routing?.send?.type === 'query'
+        ? 'query'
+        : prop.routing?.send?.type === 'body'
+          ? 'body'
+          : method && ['GET', 'DELETE', 'HEAD', 'OPTIONS'].includes(method)
+            ? 'query'
+            : 'body',
     options: extractOptions(prop),
   };
 }
@@ -265,6 +274,7 @@ function collectScopedParameters(
   allProperties: INodeProperties[],
   resource: string | undefined,
   operation: string | undefined,
+  method?: HttpMethod,
 ): Parameter[] {
   const params: Parameter[] = [];
 
@@ -281,23 +291,23 @@ function collectScopedParameters(
     ) {
       // Still include the parent as an object-type parameter so callers
       // know the grouping exists.
-      params.push(toNathanParameter(prop));
+      params.push(toNathanParameter(prop, method));
 
       // Additionally, walk children.
       for (const child of prop.options) {
         if ('values' in child && Array.isArray((child as INodePropertyCollectionEntry).values)) {
           for (const sub of (child as INodePropertyCollectionEntry).values) {
             if (!isMetaProperty(sub)) {
-              params.push(toNathanParameter(sub));
+              params.push(toNathanParameter(sub, method));
             }
           }
         } else if ('type' in child) {
           // child is INodeProperties (nested inside a collection)
-          params.push(toNathanParameter(child as INodeProperties));
+          params.push(toNathanParameter(child as INodeProperties, method));
         }
       }
     } else {
-      params.push(toNathanParameter(prop));
+      params.push(toNathanParameter(prop, method));
     }
   }
 
@@ -364,7 +374,12 @@ function adaptResourceOperationNode(
         const operationValue = String(opOpt.value);
         const method = inferHttpMethod(opProp, operationValue, desc);
         const path = inferPath(opProp, operationValue, desc);
-        const params = collectScopedParameters(allProperties, resourceValue, operationValue);
+        const params = collectScopedParameters(
+          allProperties,
+          resourceValue,
+          operationValue,
+          method,
+        );
 
         operations.push({
           name: operationValue,
@@ -384,12 +399,18 @@ function adaptResourceOperationNode(
 
     if (matchingOpProps.length === 0) {
       // Resource exists but no operation property — single "execute".
-      const params = collectScopedParameters(allProperties, resourceValue, undefined);
+      const fallbackMethod: HttpMethod = desc.requestDefaults?.method ?? 'POST';
+      const params = collectScopedParameters(
+        allProperties,
+        resourceValue,
+        undefined,
+        fallbackMethod,
+      );
       operations.push({
         name: 'execute',
         displayName: 'Execute',
         description: `Execute action on ${resourceDisplayName}`,
-        method: desc.requestDefaults?.method ?? 'POST',
+        method: fallbackMethod,
         path: desc.requestDefaults?.url ?? '/',
         parameters: params,
         output: {
@@ -429,7 +450,7 @@ function adaptOperationOnlyNode(
     const operationValue = String(opOpt.value);
     const method = inferHttpMethod(operationProp, operationValue, desc);
     const path = inferPath(operationProp, operationValue, desc);
-    const params = collectScopedParameters(allProperties, undefined, operationValue);
+    const params = collectScopedParameters(allProperties, undefined, operationValue, method);
 
     operations.push({
       name: operationValue,
@@ -469,8 +490,8 @@ function adaptSinglePurposeNode(
   desc: INodeTypeDescription,
   allProperties: INodeProperties[],
 ): Resource[] {
-  const params = collectScopedParameters(allProperties, undefined, undefined);
   const method: HttpMethod = desc.requestDefaults?.method ?? 'POST';
+  const params = collectScopedParameters(allProperties, undefined, undefined, method);
 
   return [
     {

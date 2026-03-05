@@ -115,6 +115,114 @@ describe('adaptNodeTypeDescription', () => {
     expect(result.resources[0].operations[0].name).toBe('execute');
   });
 
+  test('GET operations default params to query location', () => {
+    const desc: INodeTypeDescription = {
+      displayName: 'Hacker News',
+      name: 'hackerNews',
+      group: ['transform'],
+      version: 1,
+      description: 'Hacker News API',
+      defaults: { name: 'Hacker News' },
+      inputs: ['main'],
+      outputs: ['main'],
+      properties: [
+        {
+          displayName: 'Resource',
+          name: 'resource',
+          type: 'options',
+          default: 'article',
+          options: [{ name: 'Article', value: 'article', description: 'Articles' }],
+        },
+        {
+          displayName: 'Operation',
+          name: 'operation',
+          type: 'options',
+          default: 'getAll',
+          displayOptions: { show: { resource: ['article'] } },
+          options: [
+            {
+              name: 'Get All',
+              value: 'getAll',
+              description: 'Get all articles',
+              routing: { request: { method: 'GET', url: '/search' } },
+            },
+          ],
+        },
+        {
+          displayName: 'Additional Fields',
+          name: 'additionalFields',
+          type: 'collection',
+          default: {},
+          displayOptions: { show: { resource: ['article'], operation: ['getAll'] } },
+          options: [
+            {
+              displayName: 'Keyword',
+              name: 'keyword',
+              type: 'string',
+              default: '',
+              description: 'Search keyword',
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = adaptNodeTypeDescription(desc);
+    const articleResource = result.resources.find((r) => r.name === 'article');
+    const getAllOp = articleResource?.operations.find((o) => o.name === 'getAll');
+
+    // The keyword param (child of collection) should default to 'query' for GET
+    const keywordParam = getAllOp?.parameters.find((p) => p.name === 'keyword');
+    expect(keywordParam).toBeTruthy();
+    expect(keywordParam?.location).toBe('query');
+
+    // The parent collection param should also be 'query'
+    const additionalFieldsParam = getAllOp?.parameters.find((p) => p.name === 'additionalFields');
+    expect(additionalFieldsParam?.location).toBe('query');
+  });
+
+  test('POST operations default params to body location', () => {
+    const desc: INodeTypeDescription = {
+      displayName: 'Test',
+      name: 'test',
+      group: ['transform'],
+      version: 1,
+      description: 'Test',
+      defaults: { name: 'Test' },
+      inputs: ['main'],
+      outputs: ['main'],
+      properties: [
+        {
+          displayName: 'Operation',
+          name: 'operation',
+          type: 'options',
+          default: 'create',
+          options: [
+            {
+              name: 'Create',
+              value: 'create',
+              description: 'Create item',
+              routing: { request: { method: 'POST', url: '/items' } },
+            },
+          ],
+        },
+        {
+          displayName: 'Title',
+          name: 'title',
+          type: 'string',
+          default: '',
+          displayOptions: { show: { operation: ['create'] } },
+        },
+      ],
+    };
+
+    const result = adaptNodeTypeDescription(desc);
+    const defaultResource = result.resources[0];
+    const createOp = defaultResource.operations.find((o) => o.name === 'create');
+    const titleParam = createOp?.parameters.find((p) => p.name === 'title');
+    expect(titleParam?.location).toBe('body');
+  });
+
   test('handles credentials mapping', () => {
     const desc: INodeTypeDescription = {
       displayName: 'Test',
