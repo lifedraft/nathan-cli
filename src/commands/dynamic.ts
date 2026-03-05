@@ -104,14 +104,11 @@ export function createLazyPluginCommand(
 
       const plugin = await registryRef.getOrLoad(serviceName);
       if (!plugin) {
-        printError(
-          {
-            code: 'PLUGIN_NOT_FOUND',
-            message: `Plugin "${serviceName}" not found`,
-            suggestion: "Run 'nathan discover' to see available plugins",
-          },
-          { json },
-        );
+        printError({
+          code: 'PLUGIN_NOT_FOUND',
+          message: `Plugin "${serviceName}" not found`,
+          suggestion: "Run 'nathan discover' to see available plugins",
+        });
         process.exitCode = 1;
         return;
       }
@@ -129,7 +126,6 @@ export function createLazyPluginCommand(
             available: resources,
           },
           {
-            json,
             hint: `Available resources: ${resources.join(', ')}\nRun 'nathan describe ${serviceName}' for full documentation.`,
           },
         );
@@ -147,7 +143,6 @@ export function createLazyPluginCommand(
             available: resources,
           },
           {
-            json,
             hint: `Available resources: ${resources.join(', ')}\nRun 'nathan describe ${serviceName}' for full documentation.`,
           },
         );
@@ -165,7 +160,6 @@ export function createLazyPluginCommand(
             available: ops,
           },
           {
-            json,
             hint: `Available operations: ${ops.join(', ')}\nRun 'nathan describe ${serviceName} ${resource}' for full documentation.`,
           },
         );

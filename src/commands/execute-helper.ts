@@ -49,7 +49,7 @@ export async function executePluginOperation(
 
   const validationResult = validateParameters(op, params);
   if (validationResult && !validationResult.success) {
-    printError(validationResult.error, { json, hint: describeHint });
+    printError(validationResult.error, { hint: describeHint });
     process.exitCode = 1;
     return;
   }
@@ -58,7 +58,7 @@ export async function executePluginOperation(
 
   const credError = deps.checkCredentialsConfigured(plugin.descriptor, credentials);
   if (credError) {
-    printError(credError.error, { json, hint: credError.error.env_vars.join(', ') });
+    printError(credError.error, { hint: credError.error.env_vars.join(', ') });
     process.exitCode = 1;
     return;
   }
@@ -66,7 +66,7 @@ export async function executePluginOperation(
   const result = await plugin.execute(resource, operation, params, credentials);
 
   if (!result.success) {
-    printError(result.error, { json });
+    printError(result.error);
     process.exitCode = 1;
     return;
   }

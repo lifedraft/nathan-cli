@@ -36,21 +36,20 @@ export function printOutput(data: unknown, options: OutputOptions = {}): void {
 }
 
 /**
- * Print a structured error to stderr (both JSON and human mode).
+ * Print a structured error to stderr in human-readable format.
+ *
+ * Always uses human-readable output regardless of --json mode, because
+ * stderr is for humans debugging failures, not for machine consumption.
  *
  * Does NOT set process.exitCode — callers are responsible for exit code management.
  */
 export function printError<E extends { code: string; message: string; suggestion?: string }>(
   error: E,
-  options: { json: boolean; hint?: string },
+  options: { hint?: string } = {},
 ): void {
-  if (options.json) {
-    console.error(JSON.stringify({ error }, null, 2));
-  } else {
-    console.error(`Error: ${error.message}`);
-    if (error.suggestion) console.error(error.suggestion);
-    if (options.hint) console.error(options.hint);
-  }
+  console.error(`Error: ${error.message}`);
+  if (error.suggestion) console.error(error.suggestion);
+  if (options.hint) console.error(options.hint);
 }
 
 /**

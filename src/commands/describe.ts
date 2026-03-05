@@ -148,7 +148,7 @@ export class DescribeCommand extends Command {
           message: `Plugin "${this.service}" not found`,
           suggestion: "Run 'nathan discover' to see available plugins",
         },
-        { json: this.json },
+        {},
       );
       process.exitCode = 1;
       return;
@@ -187,7 +187,7 @@ export class DescribeCommand extends Command {
           message: `Resource "${resourceName}" not found in "${this.service}"`,
           available,
         },
-        { json: this.json, hint: `Available: ${available.join(', ')}` },
+        { hint: `Available: ${available.join(', ')}` },
       );
       process.exitCode = 1;
       return;
@@ -233,7 +233,7 @@ export class DescribeCommand extends Command {
           message: `Operation "${operationName}" not found on "${resourceName}"`,
           available,
         },
-        { json: this.json, hint: `Available: ${available.join(', ')}` },
+        { hint: `Available: ${available.join(', ')}` },
       );
       process.exitCode = 1;
       return;

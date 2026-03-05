@@ -38,27 +38,21 @@ export class RunCommand extends Command {
     const [service, resource, operation] = positional;
 
     if (!service || !resource || !operation) {
-      printError(
-        {
-          code: 'INVALID_USAGE',
-          message: 'Usage: nathan run <service> <resource> <operation> [--param=value ...]',
-        },
-        { json },
-      );
+      printError({
+        code: 'INVALID_USAGE',
+        message: 'Usage: nathan run <service> <resource> <operation> [--param=value ...]',
+      });
       process.exitCode = 1;
       return;
     }
 
     const plugin = await registry.getOrLoad(service);
     if (!plugin) {
-      printError(
-        {
-          code: 'PLUGIN_NOT_FOUND',
-          message: `Plugin "${service}" not found`,
-          suggestion: "Run 'nathan discover' to see available plugins",
-        },
-        { json },
-      );
+      printError({
+        code: 'PLUGIN_NOT_FOUND',
+        message: `Plugin "${service}" not found`,
+        suggestion: "Run 'nathan discover' to see available plugins",
+      });
       process.exitCode = 1;
       return;
     }
@@ -73,7 +67,6 @@ export class RunCommand extends Command {
           available: resources,
         },
         {
-          json,
           hint: `Available resources: ${resources.join(', ')}\nRun 'nathan describe ${service}' for full documentation.`,
         },
       );
@@ -91,7 +84,6 @@ export class RunCommand extends Command {
           available: ops,
         },
         {
-          json,
           hint: `Available operations: ${ops.join(', ')}\nRun 'nathan describe ${service} ${resource}' for full documentation.`,
         },
       );

@@ -178,8 +178,8 @@ describe('printOutput — limit', () => {
 // printError
 // ---------------------------------------------------------------------------
 describe('printError', () => {
-  test('human mode → writes message to stderr, does NOT set exitCode', () => {
-    printError({ code: 'TEST', message: 'Something went wrong' }, { json: false });
+  test('writes human-readable message to stderr, does NOT set exitCode', () => {
+    printError({ code: 'TEST', message: 'Something went wrong' });
     expect(stderr()).toContain('Error: Something went wrong');
     // printError no longer sets exitCode — callers are responsible
     expect(process.exitCode).toBe(0);
@@ -187,35 +187,28 @@ describe('printError', () => {
     expect(logged()).toBe('');
   });
 
-  test('json mode → writes JSON to stderr with { error } envelope', () => {
-    printError({ code: 'TEST', message: 'fail' }, { json: true });
-    const parsed = JSON.parse(stderr());
-    expect(parsed.error.code).toBe('TEST');
-    expect(parsed.error.message).toBe('fail');
-    expect(process.exitCode).toBe(0);
-    // Should NOT write to stdout
-    expect(logged()).toBe('');
+  test('always uses human-readable format (never JSON)', () => {
+    printError({ code: 'TEST', message: 'fail' });
+    const output = stderr();
+    expect(output).toContain('Error: fail');
+    // Should NOT be parseable as a JSON { error } envelope
+    expect(() => JSON.parse(output)).toThrow();
   });
 
-  test('json mode → preserves extra fields', () => {
-    printError({ code: 'NOT_FOUND', message: 'not found', available: ['a', 'b'] }, { json: true });
-    const parsed = JSON.parse(stderr());
-    expect(parsed.error.available).toEqual(['a', 'b']);
-  });
-
-  test('human mode → prints suggestion when present', () => {
-    printError(
-      { code: 'NOT_FOUND', message: 'Plugin not found', suggestion: "Run 'nathan discover'" },
-      { json: false },
-    );
+  test('prints suggestion when present', () => {
+    printError({
+      code: 'NOT_FOUND',
+      message: 'Plugin not found',
+      suggestion: "Run 'nathan discover'",
+    });
     expect(stderr()).toContain('Plugin not found');
     expect(stderr()).toContain("Run 'nathan discover'");
   });
 
-  test('human mode → prints hint when provided', () => {
+  test('prints hint when provided', () => {
     printError(
       { code: 'MISSING_PARAM', message: 'Missing param: owner' },
-      { json: false, hint: "Run 'nathan describe github repos list' for help." },
+      { hint: "Run 'nathan describe github repos list' for help." },
     );
     expect(stderr()).toContain('Missing param: owner');
     expect(stderr()).toContain('nathan describe github repos list');

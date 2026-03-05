@@ -29,7 +29,7 @@ export class PluginInstallCommand extends Command {
         code: 'NOT_IMPLEMENTED',
         message: `Plugin install is not yet implemented (plugin: ${this.name})`,
       },
-      { json: this.json },
+      {},
     );
     process.exitCode = 1;
   }

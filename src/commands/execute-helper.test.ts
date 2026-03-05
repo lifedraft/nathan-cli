@@ -155,7 +155,7 @@ describe('executePluginOperation', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  test('validation error (json: true) → JSON error on stderr', async () => {
+  test('validation error (json: true) → human-readable error on stderr', async () => {
     const op = makeOp({
       parameters: [
         {
@@ -174,9 +174,8 @@ describe('executePluginOperation', () => {
       mockDeps,
     );
 
-    const parsed = JSON.parse(stderr());
-    expect(parsed.error.code).toBe('MISSING_PARAM');
-    expect(parsed.error.message).toContain('Missing required');
+    expect(stderr()).toContain('Error:');
+    expect(stderr()).toContain('Missing required');
     expect(process.exitCode).toBe(1);
   });
 
@@ -229,7 +228,7 @@ describe('executePluginOperation', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  test('execution failure (json: true) → JSON error on stderr', async () => {
+  test('execution failure (json: true) → human-readable error on stderr', async () => {
     const plugin = makePlugin(async () => ({
       success: false,
       error: { code: 'HTTP_ERROR', message: 'Not Found' },
@@ -239,9 +238,7 @@ describe('executePluginOperation', () => {
       mockDeps,
     );
 
-    const parsed = JSON.parse(stderr());
-    expect(parsed.error.code).toBe('HTTP_ERROR');
-    expect(parsed.error.message).toBe('Not Found');
+    expect(stderr()).toContain('Error: Not Found');
     expect(process.exitCode).toBe(1);
   });
 
