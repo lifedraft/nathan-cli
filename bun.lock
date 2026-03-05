@@ -22,10 +22,12 @@
       },
       "peerDependencies": {
         "n8n-nodes-base": ">=1.0.0",
+        "n8n-nodes-confluence-cloud": "",
         "n8n-workflow": ">=1.0.0",
       },
       "optionalPeers": [
         "n8n-nodes-base",
+        "n8n-nodes-confluence-cloud",
         "n8n-workflow",
       ],
     },

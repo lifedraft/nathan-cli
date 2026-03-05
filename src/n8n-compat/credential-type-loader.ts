@@ -18,10 +18,31 @@ import { getRequire } from './require.js';
 import type { IAuthenticateGeneric } from './types.js';
 
 // ---------------------------------------------------------------------------
+// Community credential path registry
+// ---------------------------------------------------------------------------
+
+const communityCredentialPaths = new Map<string, string>();
+
+/**
+ * Register a community credential type's module path for resolution.
+ * Called during startup from community package discovery.
+ */
+export function registerCommunityCredentialPath(typeName: string, modulePath: string): void {
+  communityCredentialPaths.set(typeName, modulePath);
+}
+
+/**
+ * Clear community credential paths. Useful for testing.
+ */
+export function clearCommunityCredentialPaths(): void {
+  communityCredentialPaths.clear();
+}
+
+// ---------------------------------------------------------------------------
 // Credential type name validation
 // ---------------------------------------------------------------------------
 
-const SAFE_CRED_TYPE_PATTERN = /^[a-zA-Z][a-zA-Z0-9]*$/;
+const SAFE_CRED_TYPE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_]*$/;
 
 const VALID_CRED_FIELD_TYPES = new Set<CredentialFieldType>([
   'string',
@@ -50,6 +71,61 @@ function sanitizeCredTypeName(name: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// Credential module loading helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Try to load a credential class from a given module path.
+ * Returns a new instance or null if loading fails.
+ */
+function loadCredentialInstance(
+  modulePath: string,
+  className?: string,
+): Record<string, unknown> | null {
+  try {
+    const mod = getRequire()(modulePath);
+    const CredClass =
+      (className ? mod[className] : undefined) ??
+      mod.default ??
+      Object.values(mod).find(
+        (v: unknown) =>
+          typeof v === 'function' &&
+          (v as { prototype?: { name?: unknown } }).prototype?.name !== undefined,
+      ) ??
+      Object.values(mod).find((v: unknown) => typeof v === 'function');
+    if (!CredClass || typeof CredClass !== 'function') return null;
+    return new (CredClass as new () => Record<string, unknown>)();
+  } catch (err) {
+    if (process.env.NATHAN_DEBUG) {
+      console.error(`[nathan] Failed to load credential module ${modulePath}: ${err}`);
+    }
+    return null;
+  }
+}
+
+/**
+ * Resolve the module path for a credential type.
+ * Checks community registry first, then falls back to n8n-nodes-base.
+ */
+function resolveCredentialModulePath(
+  safeName: string,
+): { modulePath: string; pascalName: string } | null {
+  // Check community registry first
+  const communityPath = communityCredentialPaths.get(safeName);
+  if (communityPath) {
+    const pascalName = safeName.charAt(0).toUpperCase() + safeName.slice(1);
+    return { modulePath: communityPath, pascalName };
+  }
+
+  // Fall back to n8n-nodes-base
+  const pascalName = safeName.charAt(0).toUpperCase() + safeName.slice(1);
+  return {
+    modulePath: `n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`,
+    pascalName,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Credential type definition (field introspection)
 // ---------------------------------------------------------------------------
 
@@ -59,19 +135,21 @@ function sanitizeCredTypeName(name: string): string | null {
  * Returns a CredentialTypeInfo (core type) directly, so the composition root
  * can register this function as an introspection strategy without mapping.
  *
+ * Checks community credential registry first, then falls back to n8n-nodes-base.
+ *
  * Example: "githubApi" -> loads GithubApi.credentials.js -> returns properties, authenticate, test.
  */
 export function loadCredentialTypeDefinition(credTypeName: string): CredentialTypeInfo | null {
   const safeName = sanitizeCredTypeName(credTypeName);
   if (!safeName) return null;
 
-  try {
-    const pascalName = safeName.charAt(0).toUpperCase() + safeName.slice(1);
-    const mod = getRequire()(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
-    const CredClass = mod[pascalName] ?? mod.default ?? Object.values(mod)[0];
-    if (!CredClass || typeof CredClass !== 'function') return null;
+  const resolved = resolveCredentialModulePath(safeName);
+  if (!resolved) return null;
 
-    const instance = new (CredClass as new () => Record<string, unknown>)();
+  const instance = loadCredentialInstance(resolved.modulePath, resolved.pascalName);
+  if (!instance) return null;
+
+  try {
     const properties: CredentialField[] = (
       (instance.properties ?? []) as Array<Record<string, unknown>>
     ).map((p) => {
@@ -128,7 +206,10 @@ export function loadCredentialTypeDefinition(credTypeName: string): CredentialTy
       authenticate,
       test,
     };
-  } catch {
+  } catch (err) {
+    if (process.env.NATHAN_DEBUG) {
+      console.error(`[nathan] Failed to parse credential type ${credTypeName}: ${err}`);
+    }
     return null;
   }
 }
@@ -136,34 +217,31 @@ export function loadCredentialTypeDefinition(credTypeName: string): CredentialTy
 /**
  * Load the `authenticate` config from an n8n credential type.
  * Translates from n8n's IAuthenticateGeneric to core's CredentialAuthConfig.
- * Used by the execution shim to inject credentials into HTTP requests.
+ * Used by the execution shim and declarative executor to inject credentials.
+ *
+ * Checks community credential registry first, then falls back to n8n-nodes-base.
  */
 export function loadCredentialAuthenticate(credentialType: string): CredentialAuthConfig | null {
   const safeName = sanitizeCredTypeName(credentialType);
   if (!safeName) return null;
 
-  try {
-    const pascalName = safeName.charAt(0).toUpperCase() + safeName.slice(1);
-    const mod = getRequire()(`n8n-nodes-base/dist/credentials/${pascalName}.credentials.js`);
-    const CredClass = mod[pascalName] ?? mod.default ?? Object.values(mod)[0];
-    if (CredClass && typeof CredClass === 'function') {
-      const instance = new (CredClass as new () => Record<string, unknown>)();
-      const auth = instance.authenticate;
-      if (
-        auth &&
-        typeof auth === 'object' &&
-        (auth as Record<string, unknown>).type === 'generic'
-      ) {
-        const generic = auth as IAuthenticateGeneric;
-        return {
-          headers: generic.properties?.headers,
-          queryParams: generic.properties?.qs,
-          body: generic.properties?.body,
-          basicAuth: generic.properties?.auth,
-        };
-      }
-    }
-  } catch {}
+  const resolved = resolveCredentialModulePath(safeName);
+  if (!resolved) return null;
+
+  const instance = loadCredentialInstance(resolved.modulePath, resolved.pascalName);
+  if (!instance) return null;
+
+  const auth = instance.authenticate;
+  if (auth && typeof auth === 'object' && (auth as Record<string, unknown>).type === 'generic') {
+    const generic = auth as IAuthenticateGeneric;
+    return {
+      headers: generic.properties?.headers,
+      queryParams: generic.properties?.qs,
+      body: generic.properties?.body,
+      basicAuth: generic.properties?.auth,
+    };
+  }
+
   return null;
 }
 

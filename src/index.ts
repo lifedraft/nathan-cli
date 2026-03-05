@@ -27,9 +27,10 @@ import { loadPluginsFromDir, registerLoaderStrategy } from './core/plugin-loader
 import { registry } from './core/registry-instance.js';
 import {
   loadCredentialTypeDefinition,
+  registerCommunityCredentialPath,
   resolveCredentialExpression,
 } from './n8n-compat/credential-type-loader.js';
-import { discoverN8nNodes } from './n8n-compat/discovery.js';
+import { discoverN8nNodes, discoverCommunityN8nNodes } from './n8n-compat/discovery.js';
 import { loadN8nNodeFromPath, validateModulePath } from './n8n-compat/loader.js';
 
 // ---------------------------------------------------------------------------
@@ -114,6 +115,27 @@ try {
 } catch (err) {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`[nathan] Warning: n8n node auto-discovery failed: ${msg}`);
+}
+
+// ---------------------------------------------------------------------------
+// Auto-discover community n8n nodes (lazy registration)
+// ---------------------------------------------------------------------------
+
+try {
+  const communityPackages = discoverCommunityN8nNodes();
+  for (const pkg of communityPackages) {
+    for (const cred of pkg.credentials) {
+      registerCommunityCredentialPath(cred.typeName, cred.modulePath);
+    }
+    for (const entry of pkg.nodes) {
+      if (!registry.has(entry.serviceName)) {
+        registry.registerLazy(entry.serviceName, () => loadN8nNodeFromPath(entry.modulePath));
+      }
+    }
+  }
+} catch (err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(`[nathan] Warning: community n8n node discovery failed: ${msg}`);
 }
 
 // ---------------------------------------------------------------------------

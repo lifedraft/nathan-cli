@@ -7,7 +7,7 @@
  */
 
 import { buildCredentialObject } from '../core/credential-injector.js';
-import { executeOperation } from '../core/executor.js';
+import { loadCredentialType } from '../core/credential-introspector.js';
 import {
   findResource,
   findOperation,
@@ -16,6 +16,7 @@ import {
   type ResolvedCredentials,
 } from '../core/plugin-interface.js';
 import { adaptNodeTypeDescription } from './adapter.js';
+import { executeDeclarativeRouting } from './declarative-executor.js';
 import { createExecutionContext } from './execution-shim.js';
 import { getRequire } from './require.js';
 import type { INodeType } from './types.js';
@@ -24,6 +25,11 @@ import type { INodeType } from './types.js';
  * Build the n8n credential objects from ResolvedCredentials[].
  * n8n nodes call getCredentials('githubApi') and expect an object like
  * { accessToken: "...", server: "https://api.github.com" }.
+ *
+ * Enhanced with credential field mapping: loads the credential type definition
+ * to map `primarySecret` to the correct field name (e.g. `apiToken` for
+ * Confluence Cloud) and maps lowercased env var field names to the correct
+ * camelCase names from the credential definition.
  */
 export function buildN8nCredentials(
   credentials: ResolvedCredentials[],
@@ -32,7 +38,39 @@ export function buildN8nCredentials(
 
   for (const cred of credentials) {
     if (!cred.primarySecret && Object.keys(cred.fields).length === 0) continue;
-    result[cred.typeName] = buildCredentialObject(cred);
+
+    const obj = buildCredentialObject(cred);
+
+    // Try to load the credential type definition for field mapping
+    const credTypeInfo = loadCredentialType(cred.typeName);
+    if (credTypeInfo) {
+      // Map lowercased env var field names to correct camelCase names
+      const lowerToCorrect = new Map<string, string>();
+      for (const prop of credTypeInfo.properties) {
+        lowerToCorrect.set(prop.name.toLowerCase(), prop.name);
+      }
+
+      for (const [key, value] of Object.entries(obj)) {
+        const correctKey = lowerToCorrect.get(key.toLowerCase());
+        if (correctKey && correctKey !== key) {
+          // Set the correctly-cased field
+          if (obj[correctKey] === undefined) {
+            obj[correctKey] = value;
+          }
+          delete obj[key];
+        }
+      }
+
+      // Map primarySecret to the credential type's password field if not already set
+      if (cred.primarySecret) {
+        const passwordField = credTypeInfo.properties.find((p) => p.isPassword);
+        if (passwordField && obj[passwordField.name] === undefined) {
+          obj[passwordField.name] = cred.primarySecret;
+        }
+      }
+    }
+
+    result[cred.typeName] = obj;
   }
 
   return result;
@@ -91,21 +129,19 @@ function loadN8nNode(nodeInstance: INodeType): Plugin {
         }
       }
 
-      // For declarative nodes (no execute method), use the routing info
-      const res = findResource(descriptor, resource);
-      const op = res ? findOperation(res, operation) : undefined;
-      if (!res || !op) {
-        return {
-          success: false,
-          error: {
-            code: 'UNKNOWN_OPERATION',
-            message: `Unknown: ${resource}/${operation}`,
-          },
-        };
-      }
-
-      const baseUrl = nodeInstance.description.requestDefaults?.baseURL ?? '';
-      return executeOperation(op, params, { baseUrl, credentials });
+      // For declarative nodes (no execute method), use the declarative routing executor
+      // which resolves n8n expressions and interprets routing metadata.
+      // Pass the pre-built credential map so expressions like {{$credentials.apiToken}}
+      // resolve correctly with enhanced field mapping.
+      const credMap = buildN8nCredentials(credentials);
+      return executeDeclarativeRouting({
+        nodeDescription: nodeInstance.description,
+        resource,
+        operation,
+        params,
+        credentials,
+        credentialMap: credMap,
+      });
     },
   };
 

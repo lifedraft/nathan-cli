@@ -1,7 +1,16 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, afterEach } from 'bun:test';
 import { join } from 'node:path';
 
+import {
+  registerCredentialIntrospectionStrategy,
+  clearCredentialIntrospectionStrategies,
+} from '../core/credential-introspector.js';
 import type { ResolvedCredentials } from '../core/plugin-interface.js';
+import {
+  loadCredentialTypeDefinition,
+  registerCommunityCredentialPath,
+  clearCommunityCredentialPaths,
+} from './credential-type-loader.js';
 import { loadN8nNodeFromPath, buildN8nCredentials, validateModulePath } from './loader.js';
 
 describe('validateModulePath', () => {
@@ -108,5 +117,124 @@ describe('loadN8nNodeFromPath (GitHub node)', () => {
     const paramNames = getOp?.parameters.map((p) => p.name);
     expect(paramNames).toContain('owner');
     expect(paramNames).toContain('repository');
+  });
+});
+
+describe('buildN8nCredentials — credential field mapping', () => {
+  afterEach(() => {
+    clearCommunityCredentialPaths();
+    clearCredentialIntrospectionStrategies();
+  });
+
+  test('maps primarySecret to password field from credential definition', () => {
+    // Register the introspection strategy so loadCredentialType works
+    registerCredentialIntrospectionStrategy(loadCredentialTypeDefinition);
+
+    const creds: ResolvedCredentials[] = [
+      {
+        typeName: 'githubApi',
+        primarySecret: 'ghp_test123',
+        fields: { server: 'https://api.github.com' },
+      },
+    ];
+
+    const result = buildN8nCredentials(creds);
+    expect(result.githubApi).toBeTruthy();
+    // githubApi has accessToken as password field — should be mapped
+    expect(result.githubApi.accessToken).toBe('ghp_test123');
+    expect(result.githubApi.server).toBe('https://api.github.com');
+  });
+
+  test('maps primarySecret to apiToken for confluence cloud credentials', () => {
+    registerCredentialIntrospectionStrategy(loadCredentialTypeDefinition);
+
+    const credPath = join(
+      process.cwd(),
+      'node_modules',
+      'n8n-nodes-confluence-cloud/dist/credentials/ConfluenceCloudApi.credentials.js',
+    );
+    registerCommunityCredentialPath('confluenceCloudApi', credPath);
+
+    const creds: ResolvedCredentials[] = [
+      {
+        typeName: 'confluenceCloudApi',
+        primarySecret: 'my-api-token',
+        fields: {
+          domain: 'https://example.atlassian.net',
+          email: 'user@example.com',
+        },
+      },
+    ];
+
+    const result = buildN8nCredentials(creds);
+    expect(result.confluenceCloudApi).toBeTruthy();
+    expect(result.confluenceCloudApi.apiToken).toBe('my-api-token');
+    expect(result.confluenceCloudApi.domain).toBe('https://example.atlassian.net');
+    expect(result.confluenceCloudApi.email).toBe('user@example.com');
+  });
+
+  test('maps lowercased env var fields to correct camelCase', () => {
+    registerCredentialIntrospectionStrategy(loadCredentialTypeDefinition);
+
+    const credPath = join(
+      process.cwd(),
+      'node_modules',
+      'n8n-nodes-confluence-cloud/dist/credentials/ConfluenceCloudApi.credentials.js',
+    );
+    registerCommunityCredentialPath('confluenceCloudApi', credPath);
+
+    const creds: ResolvedCredentials[] = [
+      {
+        typeName: 'confluenceCloudApi',
+        primarySecret: 'tok',
+        // Simulates env vars: NATHAN_CONFLUENCECLOUD_APITOKEN -> fields.apitoken
+        fields: {
+          domain: 'https://example.atlassian.net',
+          email: 'user@example.com',
+          apitoken: 'from-env',
+        },
+      },
+    ];
+
+    const result = buildN8nCredentials(creds);
+    // 'apitoken' (lowercase) should map to 'apiToken' (camelCase)
+    expect(result.confluenceCloudApi.apiToken).toBe('from-env');
+    // The lowercase key should be removed
+    expect(result.confluenceCloudApi.apitoken).toBeUndefined();
+  });
+});
+
+describe('loadN8nNodeFromPath (ConfluenceCloud community node)', () => {
+  const confluenceModulePath = join(
+    process.cwd(),
+    'node_modules',
+    'n8n-nodes-confluence-cloud/dist/nodes/ConfluenceCloud/ConfluenceCloud.node.js',
+  );
+
+  test('loads the ConfluenceCloud node successfully', async () => {
+    const plugin = await loadN8nNodeFromPath(confluenceModulePath);
+    expect(plugin).toBeTruthy();
+    expect(plugin.descriptor.name).toBe('confluenceCloud');
+    expect(plugin.descriptor.type).toBe('adapted');
+  });
+
+  test('ConfluenceCloud node has expected resources', async () => {
+    const plugin = await loadN8nNodeFromPath(confluenceModulePath);
+    const resourceNames = plugin.descriptor.resources.map((r) => r.name);
+    expect(resourceNames).toContain('space');
+    expect(resourceNames).toContain('page');
+  });
+
+  test('ConfluenceCloud node has credential requirement', async () => {
+    const plugin = await loadN8nNodeFromPath(confluenceModulePath);
+    expect(plugin.descriptor.credentials.length).toBeGreaterThan(0);
+    expect(plugin.descriptor.credentials[0].name).toBe('confluenceCloudApi');
+  });
+
+  test('ConfluenceCloud space resource has operations', async () => {
+    const plugin = await loadN8nNodeFromPath(confluenceModulePath);
+    const spaceResource = plugin.descriptor.resources.find((r) => r.name === 'space');
+    expect(spaceResource).toBeTruthy();
+    expect(spaceResource?.operations.length).toBeGreaterThan(0);
   });
 });
