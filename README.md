@@ -88,11 +88,13 @@ The lookup order is:
 
 Run `nathan describe <service>` to see which environment variables a service accepts and whether credentials are configured.
 
-## Adding Services
+## Plugin Types
 
-### YAML plugins
+Nathan supports three types of plugins. All share the same CLI interface — `describe`, `run`, and direct execution work identically regardless of plugin type.
 
-The simplest way to add a new service. Create a `.yaml` file in `~/.nathan/plugins/` or the built-in `plugins/` directory:
+### 1. YAML plugins (declarative)
+
+The simplest way to add a service. Create a `.yaml` file in `~/.nathan/plugins/` or the built-in `plugins/` directory:
 
 ```yaml
 name: jsonplaceholder
@@ -129,17 +131,49 @@ resources:
             location: path
 ```
 
-### n8n nodes
+### 2. n8n nodes (programmatic)
 
-Nathan auto-discovers all 400+ nodes from `n8n-nodes-base` at runtime — no configuration needed. Nodes are loaded lazily on first use, so startup stays fast.
+Nathan auto-discovers all 300+ nodes from `n8n-nodes-base` at runtime — no configuration needed. These nodes have a custom `execute()` method and are run via nathan's execution shim, which provides credential injection, parameter access, and HTTP helpers.
 
 Install `n8n-nodes-base` and `n8n-workflow` globally (see [Install](#install)) and run `nathan plugin list` to see all available services.
 
-To use a custom n8n node (not part of `n8n-nodes-base`), point to it with a two-line YAML manifest in `plugins/`:
+Examples: GitHub, Slack, Jira, Google Sheets, Airtable, HubSpot, and most other popular integrations.
+
+```bash
+nathan github issue get --owner=torvalds --repository=linux --issueNumber=1
+nathan slack message post --channel=general --text="Hello from nathan"
+```
+
+### 3. n8n declarative nodes (routing metadata)
+
+A subset of n8n nodes (~23 in the base package) use declarative routing metadata instead of a custom `execute()` method. Nathan interprets their routing configuration — URL templates, expression resolution, query/body parameter mapping, credential injection, and post-receive transforms — to build and execute HTTP requests directly.
+
+This includes support for `collection` and `fixedCollection` parameter types where child options carry their own routing (e.g. `additionalFields.cql` in search operations).
+
+Examples: OpenAI, AWS Cognito, Azure Cosmos DB, Google Cloud Storage, Microsoft SharePoint, Brevo, WhatsApp Business Cloud.
+
+```bash
+nathan openai assistant list
+nathan awscognito userpool list
+```
+
+### 4. Community n8n nodes
+
+Third-party n8n node packages (`n8n-nodes-*`) are auto-discovered from `node_modules`. Install any community package and it becomes available immediately — both nodes and their credential types are registered automatically.
+
+```bash
+npm install n8n-nodes-confluence-cloud
+
+nathan confluencecloud space getSpaces --limit=5
+nathan confluencecloud search searchContentByCQL --cql="type=page"
+nathan confluencecloud page getPageById --id=12345
+```
+
+To use a community node via a YAML manifest instead:
 
 ```yaml
 type: n8n-compat
-module: your-custom-n8n-package/dist/nodes/MyNode/MyNode.node.js
+module: n8n-nodes-confluence-cloud/dist/nodes/ConfluenceCloud/ConfluenceCloud.node.js
 ```
 
 ### Plugin directories
