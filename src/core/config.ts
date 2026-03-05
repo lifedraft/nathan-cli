@@ -7,7 +7,7 @@
  */
 
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 export interface NathanConfig {
   /** Enable verbose debug logging. */
@@ -23,14 +23,31 @@ export interface NathanConfig {
  *
  * Accepts an optional env parameter for testing (defaults to process.env).
  */
-export function loadConfig(env: Record<string, string | undefined> = process.env): NathanConfig {
+export function loadConfig(
+  env: Record<string, string | undefined> = process.env,
+  opts?: { builtinPluginDir?: string },
+): NathanConfig {
+  const dirs = [
+    opts?.builtinPluginDir,
+    env.NATHAN_PLUGINS,
+    join(homedir(), '.nathan', 'plugins'),
+    join(process.cwd(), 'plugins'),
+  ].filter((x): x is string => typeof x === 'string');
+
+  // Deduplicate by resolved absolute path
+  const seen = new Set<string>();
+  const pluginDirs: string[] = [];
+  for (const d of dirs) {
+    const abs = resolve(d);
+    if (!seen.has(abs)) {
+      seen.add(abs);
+      pluginDirs.push(d);
+    }
+  }
+
   return {
     debug: !!env.NATHAN_DEBUG,
     allowHttp: !!env.NATHAN_ALLOW_HTTP,
-    pluginDirs: [
-      env.NATHAN_PLUGINS,
-      join(homedir(), '.nathan', 'plugins'),
-      join(process.cwd(), 'plugins'),
-    ].filter((x): x is string => typeof x === 'string'),
+    pluginDirs,
   };
 }

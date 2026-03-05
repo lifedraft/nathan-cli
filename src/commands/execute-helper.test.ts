@@ -242,6 +242,161 @@ describe('executePluginOperation', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  // ---- Array coercion ----
+
+  test('comma-separated string is split into array for array-typed param', async () => {
+    let received: Record<string, unknown> = {};
+    const plugin = makePlugin(async (_r, _o, params) => {
+      received = params;
+      return { success: true, data: {} };
+    });
+    const op = makeOp({
+      parameters: [
+        {
+          name: 'tags',
+          displayName: 'Tags',
+          description: '',
+          type: 'array',
+          required: false,
+          location: 'query',
+        },
+      ],
+    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op, rawArgs: ['--tags=a,b,c'], json: false },
+      mockDeps,
+    );
+    expect(received.tags).toEqual(['a', 'b', 'c']);
+  });
+
+  test('single string is wrapped in array for array-typed param', async () => {
+    let received: Record<string, unknown> = {};
+    const plugin = makePlugin(async (_r, _o, params) => {
+      received = params;
+      return { success: true, data: {} };
+    });
+    const op = makeOp({
+      parameters: [
+        {
+          name: 'tags',
+          displayName: 'Tags',
+          description: '',
+          type: 'array',
+          required: false,
+          location: 'query',
+        },
+      ],
+    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op, rawArgs: ['--tags=single'], json: false },
+      mockDeps,
+    );
+    expect(received.tags).toEqual(['single']);
+  });
+
+  test('whitespace around comma-separated values is trimmed', async () => {
+    let received: Record<string, unknown> = {};
+    const plugin = makePlugin(async (_r, _o, params) => {
+      received = params;
+      return { success: true, data: {} };
+    });
+    const op = makeOp({
+      parameters: [
+        {
+          name: 'tags',
+          displayName: 'Tags',
+          description: '',
+          type: 'array',
+          required: false,
+          location: 'query',
+        },
+      ],
+    });
+    await executePluginOperation(
+      {
+        plugin,
+        resource: 'items',
+        operation: 'list',
+        op,
+        rawArgs: ['--tags=a , b , c'],
+        json: false,
+      },
+      mockDeps,
+    );
+    expect(received.tags).toEqual(['a', 'b', 'c']);
+  });
+
+  test('string param with commas is NOT split', async () => {
+    let received: Record<string, unknown> = {};
+    const plugin = makePlugin(async (_r, _o, params) => {
+      received = params;
+      return { success: true, data: {} };
+    });
+    const op = makeOp({
+      parameters: [
+        {
+          name: 'name',
+          displayName: 'Name',
+          description: '',
+          type: 'string',
+          required: false,
+          location: 'query',
+        },
+      ],
+    });
+    await executePluginOperation(
+      {
+        plugin,
+        resource: 'items',
+        operation: 'list',
+        op,
+        rawArgs: ['--name=foo,bar'],
+        json: false,
+      },
+      mockDeps,
+    );
+    expect(received.name).toBe('foo,bar');
+  });
+
+  test('undefined array param stays absent', async () => {
+    let received: Record<string, unknown> = {};
+    const plugin = makePlugin(async (_r, _o, params) => {
+      received = params;
+      return { success: true, data: {} };
+    });
+    const op = makeOp({
+      parameters: [
+        {
+          name: 'tags',
+          displayName: 'Tags',
+          description: '',
+          type: 'array',
+          required: false,
+          location: 'query',
+        },
+      ],
+    });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op, rawArgs: [], json: false },
+      mockDeps,
+    );
+    expect(received.tags).toBeUndefined();
+  });
+
+  test('coercion is a no-op when parameters is empty', async () => {
+    let received: Record<string, unknown> = {};
+    const plugin = makePlugin(async (_r, _o, params) => {
+      received = params;
+      return { success: true, data: {} };
+    });
+    const op = makeOp({ parameters: [] });
+    await executePluginOperation(
+      { plugin, resource: 'items', operation: 'list', op, rawArgs: ['--foo=bar'], json: false },
+      mockDeps,
+    );
+    expect(received.foo).toBe('bar');
+  });
+
   // ---- Describe hint content ----
 
   test('describe hint contains service/resource/operation names', async () => {

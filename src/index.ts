@@ -7,7 +7,8 @@
 
 declare const __APP_VERSION__: string;
 
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { plugin as bunPlugin } from 'bun';
 import { Cli, Builtins } from 'clipanion';
@@ -87,7 +88,8 @@ registerCredentialExpressionResolver(resolveCredentialExpression);
 // Load plugins
 // ---------------------------------------------------------------------------
 
-const config = loadConfig();
+const builtinPluginDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugins');
+const config = loadConfig(undefined, { builtinPluginDir });
 
 try {
   for (const dir of config.pluginDirs) {

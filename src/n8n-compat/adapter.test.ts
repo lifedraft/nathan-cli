@@ -223,6 +223,136 @@ describe('adaptNodeTypeDescription', () => {
     expect(titleParam?.location).toBe('body');
   });
 
+  // ---- HTML stripping ----
+
+  test('strips HTML tags from descriptions', () => {
+    const desc: INodeTypeDescription = {
+      displayName: 'Test',
+      name: 'test',
+      group: ['transform'],
+      version: 1,
+      description: '<p>Manage <b>GitHub</b> issues</p>',
+      defaults: { name: 'Test' },
+      inputs: ['main'],
+      outputs: ['main'],
+      properties: [],
+    };
+
+    const result = adaptNodeTypeDescription(desc);
+    expect(result.description).toBe('Manage GitHub issues');
+  });
+
+  test('decodes HTML entities in descriptions', () => {
+    const desc: INodeTypeDescription = {
+      displayName: 'Test',
+      name: 'test',
+      group: ['transform'],
+      version: 1,
+      description: 'Send &amp; receive &lt;data&gt;',
+      defaults: { name: 'Test' },
+      inputs: ['main'],
+      outputs: ['main'],
+      properties: [],
+    };
+
+    const result = adaptNodeTypeDescription(desc);
+    expect(result.description).toBe('Send & receive <data>');
+  });
+
+  test('decodes quote and apostrophe entities', () => {
+    const desc: INodeTypeDescription = {
+      displayName: 'Test',
+      name: 'test',
+      group: ['transform'],
+      version: 1,
+      description: 'The &quot;name&quot; field&#39;s value',
+      defaults: { name: 'Test' },
+      inputs: ['main'],
+      outputs: ['main'],
+      properties: [],
+    };
+
+    const result = adaptNodeTypeDescription(desc);
+    expect(result.description).toBe('The "name" field\'s value');
+  });
+
+  test('collapses whitespace and trims', () => {
+    const desc: INodeTypeDescription = {
+      displayName: 'Test',
+      name: 'test',
+      group: ['transform'],
+      version: 1,
+      description: '  multiple   spaces\n\nand  newlines  ',
+      defaults: { name: 'Test' },
+      inputs: ['main'],
+      outputs: ['main'],
+      properties: [],
+    };
+
+    const result = adaptNodeTypeDescription(desc);
+    expect(result.description).toBe('multiple spaces and newlines');
+  });
+
+  test('strips HTML from parameter descriptions', () => {
+    const desc: INodeTypeDescription = {
+      displayName: 'Test',
+      name: 'test',
+      group: ['transform'],
+      version: 1,
+      description: 'Test',
+      defaults: { name: 'Test' },
+      inputs: ['main'],
+      outputs: ['main'],
+      properties: [
+        {
+          displayName: 'Name',
+          name: 'name',
+          type: 'string',
+          default: '',
+          description: '<i>Required</i>. The owner&#39;s name.',
+        },
+      ],
+    };
+
+    const result = adaptNodeTypeDescription(desc);
+    const param = result.resources[0].operations[0].parameters.find((p) => p.name === 'name');
+    expect(param?.description).toBe("Required. The owner's name.");
+  });
+
+  test('does not double-decode &amp;lt; entity', () => {
+    const desc: INodeTypeDescription = {
+      displayName: 'Test',
+      name: 'test',
+      group: ['transform'],
+      version: 1,
+      description: 'Use &amp;lt;tag&amp;gt; for markup',
+      defaults: { name: 'Test' },
+      inputs: ['main'],
+      outputs: ['main'],
+      properties: [],
+    };
+
+    const result = adaptNodeTypeDescription(desc);
+    expect(result.description).toBe('Use &lt;tag&gt; for markup');
+  });
+
+  test('handles combined HTML tags and entities', () => {
+    const desc: INodeTypeDescription = {
+      displayName: 'Test',
+      name: 'test',
+      group: ['transform'],
+      version: 1,
+      description: '<p>Get a <a href="https://example.com">record</a> from the table</p>',
+      defaults: { name: 'Test' },
+      inputs: ['main'],
+      outputs: ['main'],
+      properties: [],
+    };
+
+    const result = adaptNodeTypeDescription(desc);
+    expect(result.description).toBe('Get a record from the table');
+  });
+
   test('handles credentials mapping', () => {
     const desc: INodeTypeDescription = {
       displayName: 'Test',

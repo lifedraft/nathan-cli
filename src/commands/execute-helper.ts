@@ -11,13 +11,31 @@ import {
 } from '../core/credential-resolver.js';
 import { parseFlags, extractLimit } from '../core/flag-parser.js';
 import { validateParameters } from '../core/parameter-validator.js';
-import type { Plugin, Operation } from '../core/plugin-interface.js';
+import type { Plugin, Operation, Parameter } from '../core/plugin-interface.js';
 import { printOutput, printError } from './output.js';
 
 /** Injectable credential functions (for testing without mock.module). */
 export interface CredentialDeps {
   resolveCredentialsForPlugin: typeof _resolveCredentials;
   checkCredentialsConfigured: typeof _checkCredentials;
+}
+
+/**
+ * Coerce string values to arrays for parameters declared as type 'array'.
+ * Comma-separated strings are split; single strings are wrapped in an array.
+ */
+function coerceArrayParams(
+  params: Record<string, unknown>,
+  parameters: Parameter[] | undefined,
+): void {
+  if (!parameters) return;
+  for (const paramDef of parameters) {
+    if (paramDef.type !== 'array') continue;
+    const val = params[paramDef.name];
+    if (val === undefined || Array.isArray(val)) continue;
+    const str = String(val);
+    params[paramDef.name] = str.includes(',') ? str.split(',').map((s) => s.trim()) : [str];
+  }
 }
 
 const defaultDeps: CredentialDeps = {
@@ -42,8 +60,10 @@ export async function executePluginOperation(
 ): Promise<void> {
   const { plugin, resource, operation, op, rawArgs, json } = opts;
 
-  const params = parseFlags(rawArgs);
-  const limit = extractLimit(params);
+  const parsed = parseFlags(rawArgs);
+  const limit = extractLimit(parsed);
+  const params: Record<string, unknown> = parsed;
+  coerceArrayParams(params, op.parameters);
 
   const describeHint = `Run 'nathan describe ${plugin.descriptor.name} ${resource} ${operation}' for full documentation.`;
 

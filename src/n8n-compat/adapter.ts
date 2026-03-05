@@ -31,6 +31,22 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
+ * Strip HTML tags, decode common entities, and collapse whitespace.
+ */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Normalise an n8n property type to the simpler nathan ParameterType.
  */
 function mapParameterType(n8nType: NodePropertyType): ParameterType {
@@ -249,7 +265,7 @@ function toNathanParameter(prop: INodeProperties, method?: HttpMethod): Paramete
   return {
     name: prop.name,
     displayName: prop.displayName,
-    description: prop.description ?? '',
+    description: stripHtml(prop.description ?? ''),
     type: mapParameterType(prop.type),
     required: prop.required ?? false,
     default: normalizeDefault(prop.default),
@@ -325,7 +341,7 @@ function buildOperationDescription(
   if (operationProp?.options) {
     for (const opt of operationProp.options) {
       if (isPropertyOption(opt) && opt.value === operationValue && opt.description) {
-        return opt.description;
+        return stripHtml(opt.description);
       }
     }
   }
@@ -425,7 +441,7 @@ function adaptResourceOperationNode(
       resources.push({
         name: resourceValue,
         displayName: resourceDisplayName,
-        description: resOpt.description ?? humanise(resourceValue),
+        description: stripHtml(resOpt.description ?? humanise(resourceValue)),
         operations,
       });
     }
@@ -565,7 +581,7 @@ export function adaptNodeTypeDescription(desc: INodeTypeDescription): PluginDesc
   return {
     name: desc.name,
     displayName: desc.displayName,
-    description: desc.description,
+    description: stripHtml(desc.description),
     version: resolveVersion(desc),
     type: 'adapted',
     credentials,
