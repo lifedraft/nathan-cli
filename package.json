@@ -1,6 +1,6 @@
 {
   "name": "nathan-cli",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "AI-agent-friendly CLI for unified API orchestration",
   "license": "MIT",
   "repository": {
