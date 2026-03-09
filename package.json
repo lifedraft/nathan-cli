@@ -1,7 +1,16 @@
 {
   "name": "nathan-cli",
   "version": "0.2.9",
+  "description": "AI-agent-friendly CLI for unified API orchestration",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lifedraft/nathan-cli.git"
+  },
+  "homepage": "https://github.com/lifedraft/nathan-cli",
+  "bugs": {
+    "url": "https://github.com/lifedraft/nathan-cli/issues"
+  },
   "type": "module",
   "bin": {
     "nathan": "./dist/nathan"
